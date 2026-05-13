@@ -43,10 +43,67 @@ const IGrid   = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none
 const IList   = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>;
 const IFilter = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="22,3 2,3 10,12.46 10,19 14,21 14,12.46 22,3"/></svg>;
 
-// ═══════════════════════════════════════════════════════════
-//  SHARED
-// ═══════════════════════════════════════════════════════════
+// ── TMDB CONFIG ───────────────────────────────────────────────────────────────
+const TMDB_KEY = (typeof process !== "undefined" && process.env?.REACT_APP_TMDB_KEY) || null;
+const TMDB_IMG = "https://image.tmdb.org/t/p/w500";
+const TMDB_IMG_ORIG = "https://image.tmdb.org/t/p/original";
+
+// TMDB IDs for our dramas (searched by name)
+const TMDB_IDS = {
+  1:  { id: 94796,  type: "tv" },  // Wicked World / 이상한 변호사 우영우 (placeholder)
+  2:  { id: 94605,  type: "tv" },  // Liang Chen Mei Jin
+  3:  { id: 202104, type: "tv" },  // Wife for Hire
+  4:  { id: 111803, type: "tv" },  // My Star Love
+  5:  { id: 92685,  type: "tv" },  // A Thousand Years
+  6:  { id: 125933, type: "tv" },  // Doctor Cha
+  7:  { id: 114836, type: "tv" },  // Red Thread
+  8:  { id: 200068, type: "tv" },  // Prince of Dreams
+  9:  { id: 103900, type: "tv" },  // Flower of War
+  10: { id: 127052, type: "tv" },  // God and the Lawyer
+  11: { id: 46260,  type: "tv" },  // Secret Garden
+  12: { id: 164179, type: "tv" },  // Heavenly Palace
+};
+
+function useTMDBPoster(dramaId, fallbackGradient) {
+  const [poster, setPoster] = useState(null);
+  useEffect(() => {
+    if (!TMDB_KEY) return;
+    const info = TMDB_IDS[dramaId];
+    if (!info) return;
+    fetch(`https://api.themoviedb.org/3/${info.type}/${info.id}?api_key=${TMDB_KEY}&language=ru`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.poster_path) setPoster(TMDB_IMG + data.poster_path);
+      })
+      .catch(() => {});
+  }, [dramaId]);
+  return poster;
+}
+
+function useTMDBDetails(dramaId) {
+  const [details, setDetails] = useState(null);
+  useEffect(() => {
+    if (!TMDB_KEY) return;
+    const info = TMDB_IDS[dramaId];
+    if (!info) return;
+    fetch(`https://api.themoviedb.org/3/${info.type}/${info.id}?api_key=${TMDB_KEY}&language=ru&append_to_response=credits`)
+      .then(r => r.json())
+      .then(data => setDetails(data))
+      .catch(() => {});
+  }, [dramaId]);
+  return details;
+}
 function Poster({ d, fontSize=40 }) {
+  const poster = useTMDBPoster(d.id, d.gradient);
+  if (poster) {
+    return (
+      <div style={{ width:"100%", height:"100%", position:"relative", overflow:"hidden" }}>
+        <img src={poster} alt={d.title}
+          style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }}
+          onError={e=>{ e.target.style.display="none"; }}/>
+      </div>
+    );
+  }
   return (
     <div style={{ width:"100%", height:"100%", background:d.gradient,
       display:"flex", alignItems:"center", justifyContent:"center", position:"relative", overflow:"hidden" }}>
@@ -476,8 +533,16 @@ function WatchPage({ drama: d, onBack, isFav, onToggleFav }) {
   const [bm, setBm]         = useState(isFav||false);
   const [exp, setExp]       = useState(false);
   const [playing, setPlay]  = useState(false);
+  const tmdb                = useTMDBDetails(d.id);
   const episodes = Array.from({length:d.episodes},(_,i)=>({num:i+1,dur:`${42+Math.floor(Math.random()*10)} мин`,watched:i<2}));
   const goEp = n => { setEp(n); setPlay(false); };
+
+  // Use TMDB data if available, fallback to local
+  const desc     = tmdb?.overview || d.desc;
+  const cast     = tmdb?.credits?.cast?.slice(0,6).map(c=>c.name) || d.cast;
+  const director = tmdb?.credits?.crew?.find(c=>c.job==="Director")?.name || d.director;
+  const rating   = tmdb?.vote_average ? (tmdb.vote_average/2).toFixed(1) : d.rating;
+  const episodes_count = tmdb?.number_of_episodes || d.episodes;
 
   return (
     <div className="watch-container" style={{ background:"#0a0a18", minHeight:"100vh", color:"#fff",
@@ -509,11 +574,14 @@ function WatchPage({ drama: d, onBack, isFav, onToggleFav }) {
       </div>
       {/* HERO */}
       <div style={{ position:"relative", height:250, overflow:"hidden" }}>
-        <div style={{ position:"absolute", inset:0, background:d.gradient }}/>
+        {tmdb?.backdrop_path
+          ? <img src={TMDB_IMG_ORIG+tmdb.backdrop_path} alt={d.title}
+              style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover" }}/>
+          : <div style={{ position:"absolute", inset:0, background:d.gradient }}/>}
         <div style={{ position:"absolute", right:-15, top:-10, fontSize:190,
-          opacity:0.08, userSelect:"none", filter:"blur(2px)" }}>{d.emoji}</div>
+          opacity:0.06, userSelect:"none", filter:"blur(2px)" }}>{d.emoji}</div>
         <div style={{ position:"absolute", inset:0,
-          background:"linear-gradient(to bottom,rgba(0,0,0,0.08) 0%,rgba(10,10,24,1) 100%)" }}/>
+          background:"linear-gradient(to bottom,rgba(0,0,0,0.2) 0%,rgba(10,10,24,1) 100%)" }}/>
         <div style={{ position:"absolute", bottom:0, left:0, right:0,
           padding:"0 16px 18px", display:"flex", gap:13, alignItems:"flex-end" }}>
           <div style={{ width:82, height:114, borderRadius:11, overflow:"hidden", flexShrink:0,
@@ -523,15 +591,17 @@ function WatchPage({ drama: d, onBack, isFav, onToggleFav }) {
           <div style={{ flex:1, minWidth:0, paddingBottom:3 }}>
             <div style={{ marginBottom:5 }}><Tag label={d.tag} color={d.tagColor}/></div>
             <div style={{ fontSize:19, fontWeight:800, color:"#fff", lineHeight:1.15,
-              fontFamily:"'Bebas Neue',sans-serif", letterSpacing:"0.02em", marginBottom:4 }}>{d.title}</div>
+              fontFamily:"'Bebas Neue',sans-serif", letterSpacing:"0.02em", marginBottom:4 }}>
+              {tmdb?.name || tmdb?.title || d.title}
+            </div>
             <div style={{ color:"rgba(255,255,255,0.35)", fontSize:11, marginBottom:7 }}>{d.en}</div>
             <div style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap" }}>
               <div style={{ display:"flex", alignItems:"center", gap:3,
                 background:"rgba(0,0,0,0.45)", backdropFilter:"blur(6px)",
                 borderRadius:7, padding:"3px 7px" }}>
-                <IStar s={11}/><span style={{ color:"#FFD700", fontWeight:700, fontSize:12 }}>{d.rating}</span>
+                <IStar s={11}/><span style={{ color:"#FFD700", fontWeight:700, fontSize:12 }}>{rating}</span>
               </div>
-              {[d.year, d.country, `${d.episodes} сер.`, d.studio].map(v=>
+              {[d.year, d.country, `${episodes_count} сер.`, d.studio].map(v=>
                 <span key={v} style={{ color:"rgba(255,255,255,0.45)", fontSize:11 }}>{v}</span>)}
             </div>
           </div>
@@ -548,7 +618,7 @@ function WatchPage({ drama: d, onBack, isFav, onToggleFav }) {
         <div style={{ color:"rgba(255,255,255,0.58)", fontSize:13, lineHeight:1.8,
           overflow:"hidden", maxHeight:exp?"none":"55px",
           maskImage:exp?"none":"linear-gradient(to bottom,black 40%,transparent 100%)",
-          WebkitMaskImage:exp?"none":"linear-gradient(to bottom,black 40%,transparent 100%)" }}>{d.desc}</div>
+          WebkitMaskImage:exp?"none":"linear-gradient(to bottom,black 40%,transparent 100%)" }}>{desc}</div>
         <button onClick={()=>setExp(e=>!e)} style={{ background:"none", border:"none",
           color:"#ff4e6a", fontSize:12, fontWeight:700, cursor:"pointer",
           marginTop:4, padding:0, fontFamily:"'Manrope',sans-serif" }}>
@@ -559,8 +629,7 @@ function WatchPage({ drama: d, onBack, isFav, onToggleFav }) {
         <div style={{ fontSize:11, color:"rgba(255,255,255,0.28)", marginBottom:9,
           fontFamily:"'Bebas Neue',sans-serif", letterSpacing:"0.08em" }}>В ГЛАВНЫХ РОЛЯХ</div>
         <div style={{ display:"flex", gap:11, overflowX:"auto", scrollbarWidth:"none" }}>
-          {d.cast.map(name=><div key={name} style={{ flexShrink:0, textAlign:"center" }}>
-            <div style={{ width:48, height:48, borderRadius:"50%", margin:"0 auto 5px",
+          {cast.map(name=><div key={name} style={{ flexShrink:0, textAlign:"center" }}>            <div style={{ width:48, height:48, borderRadius:"50%", margin:"0 auto 5px",
               background:"linear-gradient(135deg,rgba(255,78,106,0.28),rgba(255,126,66,0.28))",
               border:"2px solid rgba(255,78,106,0.22)",
               display:"flex", alignItems:"center", justifyContent:"center", fontSize:18 }}>🎭</div>
@@ -572,8 +641,8 @@ function WatchPage({ drama: d, onBack, isFav, onToggleFav }) {
       {/* INFO TABLE */}
       <div style={{ margin:"0 16px 16px", background:"rgba(255,255,255,0.04)",
         borderRadius:13, border:"1px solid rgba(255,255,255,0.07)", overflow:"hidden" }}>
-        {[["Страна",d.country],["Год",String(d.year)],["Серий",String(d.episodes)],
-          ["Режиссёр",d.director],["Студия",d.studio]].map(([k,v],i,arr)=>(
+        {[["Страна",d.country],["Год",String(d.year)],["Серий",String(episodes_count)],
+          ["Режиссёр",director],["Студия",d.studio]].map(([k,v],i,arr)=>(
           <div key={k} style={{ display:"flex", justifyContent:"space-between",
             alignItems:"center", padding:"10px 15px",
             borderBottom:i<arr.length-1?"1px solid rgba(255,255,255,0.05)":"none" }}>

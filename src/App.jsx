@@ -72,8 +72,8 @@ function BottomNav({ page, onNav }) {
     { id:"fav",     icon:"❤️", label:"Избранное"},
   ];
   return (
-    <div style={{ position:"fixed", bottom:0, left:"50%", transform:"translateX(-50%)",
-      width:"100%", maxWidth:680, background:"rgba(8,8,20,0.97)",
+    <div className="bottom-nav-bar" style={{ position:"fixed", bottom:0, left:"50%", transform:"translateX(-50%)",
+      width:"100%", maxWidth:1400, background:"rgba(8,8,20,0.97)",
       backdropFilter:"blur(16px)", borderTop:"1px solid rgba(255,255,255,0.07)",
       display:"flex", justifyContent:"space-around", padding:"8px 0 14px", zIndex:80 }}>
       {items.map(it=>(
@@ -214,8 +214,7 @@ function Section({ title, icon, dramas, onSelect }) {
   const ref = useRef(null);
   return (
     <div style={{ marginBottom:30 }}>
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
-        marginBottom:11, padding:"0 16px" }}>
+      <div className="page-wrap" style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:11 }}>
         <div style={{ display:"flex", alignItems:"center", gap:7 }}>
           <span>{icon}</span>
           <span style={{ fontSize:16, fontWeight:800, color:"#fff",
@@ -225,21 +224,18 @@ function Section({ title, icon, dramas, onSelect }) {
           color:"#ff4e6a", fontSize:12, cursor:"pointer", fontWeight:600 }}>Все <ICR s={13}/></div>
       </div>
       <div style={{ position:"relative" }}>
-        <div ref={ref} style={{ display:"flex", gap:10, overflowX:"auto",
-          scrollbarWidth:"none", padding:"4px 16px 6px", scrollBehavior:"smooth" }}>
-          {dramas.map(d=><div key={d.id} style={{ flexShrink:0, width:132 }}>
-            <Card d={d} onClick={onSelect}/>
-          </div>)}
+        <div ref={ref} className="section-cards" style={{ padding:"4px 18px 6px" }}>
+          {dramas.map(d=><div key={d.id} className="card-item"><Card d={d} onClick={onSelect}/></div>)}
         </div>
-        <button onClick={()=>ref.current&&(ref.current.scrollLeft-=220)}
-          style={{ position:"absolute", left:3, top:"37%", transform:"translateY(-50%)",
+        <button onClick={()=>ref.current&&(ref.current.scrollLeft-=280)}
+          style={{ position:"absolute", left:4, top:"37%", transform:"translateY(-50%)",
             background:"rgba(10,10,24,0.9)", border:"1px solid rgba(255,255,255,0.1)",
-            color:"#fff", width:28, height:28, borderRadius:"50%", cursor:"pointer",
+            color:"#fff", width:30, height:30, borderRadius:"50%", cursor:"pointer",
             display:"flex", alignItems:"center", justifyContent:"center" }}><ICL s={13}/></button>
-        <button onClick={()=>ref.current&&(ref.current.scrollLeft+=220)}
-          style={{ position:"absolute", right:3, top:"37%", transform:"translateY(-50%)",
+        <button onClick={()=>ref.current&&(ref.current.scrollLeft+=280)}
+          style={{ position:"absolute", right:4, top:"37%", transform:"translateY(-50%)",
             background:"rgba(10,10,24,0.9)", border:"1px solid rgba(255,255,255,0.1)",
-            color:"#fff", width:28, height:28, borderRadius:"50%", cursor:"pointer",
+            color:"#fff", width:30, height:30, borderRadius:"50%", cursor:"pointer",
             display:"flex", alignItems:"center", justifyContent:"center" }}><ICR s={13}/></button>
       </div>
     </div>
@@ -263,37 +259,46 @@ function HomePage({ onSelect, onNav, user, onLoginClick }) {
         background: scrolled?"rgba(10,10,24,0.97)":"transparent",
         backdropFilter: scrolled?"blur(16px)":"none",
         borderBottom: scrolled?"1px solid rgba(255,255,255,0.06)":"none",
-        transition:"all 0.3s", padding:"0 16px", height:54,
-        display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-        <div style={{ fontSize:21, fontFamily:"'Bebas Neue',sans-serif" }}>
-          <span style={{ background:"linear-gradient(90deg,#ff4e6a,#ff7e42)",
-            WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>DORAMA</span>
-          <span style={{ color:"#fff" }}>LIVE</span>
+        transition:"all 0.3s", height:58, width:"100%" }}>
+        <div className="nav-wrap">
+          <div style={{ fontSize:21, fontFamily:"'Bebas Neue',sans-serif" }}>
+            <span style={{ background:"linear-gradient(90deg,#ff4e6a,#ff7e42)",
+              WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>DORAMA</span>
+            <span style={{ color:"#fff" }}>LIVE</span>
+          </div>
+          <div className="desktop-nav">
+            {["Главная","Каталог","Новинки","Топ"].map(l=>(
+              <span key={l} onClick={()=>l==="Каталог"&&onNav("catalog")}
+                style={{ color:"rgba(255,255,255,0.55)", fontSize:13, fontWeight:600, cursor:"pointer" }}
+                onMouseEnter={e=>e.target.style.color="#fff"}
+                onMouseLeave={e=>e.target.style.color="rgba(255,255,255,0.55)"}>{l}</span>
+            ))}
+          </div>
+          <div>
+            {user
+              ? <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                  <div style={{ width:34, height:34, borderRadius:"50%",
+                    background:"linear-gradient(135deg,#ff4e6a,#ff7e42)",
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    fontSize:14, fontWeight:700, color:"#fff", cursor:"pointer" }}
+                    onClick={()=>onNav("fav")}>{user.name[0].toUpperCase()}</div>
+                </div>
+              : <button onClick={onLoginClick} style={{ background:"linear-gradient(90deg,#ff4e6a,#ff7e42)",
+                  border:"none", color:"#fff", padding:"7px 18px", borderRadius:8,
+                  fontSize:12, fontWeight:700, cursor:"pointer",
+                  fontFamily:"'Bebas Neue',sans-serif", letterSpacing:"0.05em" }}>ВОЙТИ</button>}
+          </div>
         </div>
-        {user
-          ? <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-              <div style={{ width:32, height:32, borderRadius:"50%",
-                background:"linear-gradient(135deg,#ff4e6a,#ff7e42)",
-                display:"flex", alignItems:"center", justifyContent:"center",
-                fontSize:14, fontWeight:700, color:"#fff", cursor:"pointer" }}
-                onClick={()=>onNav("fav")}>
-                {user.name[0].toUpperCase()}
-              </div>
-            </div>
-          : <button onClick={onLoginClick} style={{ background:"linear-gradient(90deg,#ff4e6a,#ff7e42)",
-              border:"none", color:"#fff", padding:"6px 14px", borderRadius:8,
-              fontSize:12, fontWeight:700, cursor:"pointer",
-              fontFamily:"'Bebas Neue',sans-serif", letterSpacing:"0.05em" }}>ВОЙТИ</button>}
       </nav>
-      <div style={{ marginTop:-54 }}><HeroBanner onSelect={onSelect}/></div>
+      <div style={{ marginTop:-58 }}><HeroBanner onSelect={onSelect}/></div>
       <div style={{ height:18 }}/>
       <Section title="ПОПУЛЯРНОЕ"  icon="🔥" dramas={DRAMAS.filter(d=>d.tag==="ХИТ")}     onSelect={onSelect}/>
       <Section title="НОВИНКИ"     icon="✨" dramas={DRAMAS.filter(d=>d.tag==="НОВИНКА")} onSelect={onSelect}/>
       <Section title="ВСЕ ДОРАМЫ" icon="🎬" dramas={DRAMAS}                               onSelect={onSelect}/>
-      <div style={{ padding:"0 16px 32px" }}>
+      <div className="page-wrap" style={{ paddingBottom:32 }}>
         <div style={{ fontSize:16, fontWeight:800, color:"#fff",
           fontFamily:"'Bebas Neue',sans-serif", marginBottom:11 }}>🌏 ПО СТРАНАМ</div>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:9 }}>
+        <div className="countries-grid">
           {["Корея","Китай","Япония","Тайвань"].map(c=>{
             const count=DRAMAS.filter(d=>d.country===c).length;
             const s=DRAMAS.find(d=>d.country===c);
@@ -451,8 +456,7 @@ function CatalogPage({ onSelect, initCountry="" }) {
           <div style={{ fontSize:12, marginTop:6, color:"rgba(255,255,255,0.18)" }}>Попробуй изменить фильтры</div>
         </div>
       ) : view==="grid" ? (
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",
-          gap:10, padding:"0 16px 16px" }}>
+        <div className="catalog-grid">
           {sorted.map(d=><Card key={d.id} d={d} onClick={onSelect}/>)}
         </div>
       ) : (
@@ -476,7 +480,7 @@ function WatchPage({ drama: d, onBack, isFav, onToggleFav }) {
   const goEp = n => { setEp(n); setPlay(false); };
 
   return (
-    <div style={{ background:"#0a0a18", minHeight:"100vh", color:"#fff",
+    <div className="watch-container" style={{ background:"#0a0a18", minHeight:"100vh", color:"#fff",
       fontFamily:"'Manrope',sans-serif", paddingBottom:70 }}>
       {/* TOP NAV */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
@@ -890,11 +894,12 @@ function AuthPage({ onLogin, onClose }) {
   };
 
   return (
-    <div style={{ position:"fixed", inset:0, zIndex:200,
+    <div onClick={onClose} className="auth-overlay" style={{ position:"fixed", inset:0, zIndex:200,
       background:"rgba(0,0,0,0.9)", backdropFilter:"blur(10px)",
       display:"flex", alignItems:"flex-end", justifyContent:"center",
       fontFamily:"'Manrope',sans-serif" }}>
-      <div style={{ background:"linear-gradient(160deg,#131325 0%,#0e0e1e 100%)",
+      <div onClick={e=>e.stopPropagation()} className="auth-box" style={{
+        background:"linear-gradient(160deg,#131325 0%,#0e0e1e 100%)",
         borderRadius:"22px 22px 0 0", width:"100%", maxWidth:680,
         border:"1px solid rgba(255,255,255,0.08)",
         boxShadow:"0 -20px 60px rgba(0,0,0,0.7)",
@@ -1165,8 +1170,39 @@ export default function App() {
         input::placeholder{color:rgba(255,255,255,0.26);}
         @keyframes spin{to{transform:rotate(360deg);}}
         @keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+        .page-wrap{width:100%;max-width:1400px;margin:0 auto;padding:0 18px;}
+        .nav-wrap{width:100%;max-width:1400px;margin:0 auto;padding:0 18px;display:flex;align-items:center;justify-content:space-between;height:100%;}
+        .desktop-nav{display:none;}
+        .bottom-nav-bar{display:flex;}
+        .hero-wrap{border-radius:0 0 24px 24px;}
+        .section-cards{display:flex;gap:11px;overflow-x:auto;scrollbar-width:none;padding:4px 0 6px;scroll-behavior:smooth;}
+        .card-item{flex-shrink:0;width:132px;}
+        .catalog-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:11px;}
+        .countries-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
+        .watch-container{max-width:680px;margin:0 auto;}
+        .auth-overlay{align-items:flex-end;}
+        .auth-box{border-radius:22px 22px 0 0;width:100%;max-width:680px;}
+        @media(min-width:768px){
+          .desktop-nav{display:flex;gap:28px;align-items:center;}
+          .bottom-nav-bar{display:none!important;}
+          .hero-wrap{height:560px!important;border-radius:0 0 32px 32px;}
+          .hero-title{font-size:54px!important;max-width:600px;}
+          .hero-desc{max-width:500px!important;font-size:14px!important;}
+          .card-item{width:168px!important;}
+          .catalog-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))!important;gap:16px!important;}
+          .countries-grid{grid-template-columns:repeat(4,1fr)!important;}
+          .watch-container{max-width:860px!important;}
+          .auth-overlay{align-items:center!important;}
+          .auth-box{border-radius:20px!important;max-width:460px!important;}
+          .section-cards{overflow-x:auto;}
+        }
+        @media(min-width:1100px){
+          .card-item{width:190px!important;}
+          .catalog-grid{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))!important;}
+          .hero-title{font-size:64px!important;}
+        }
       `}</style>
-      <div style={{ background:"#0a0a18", minHeight:"100vh", maxWidth:680, margin:"0 auto" }}>
+      <div style={{ background:"#0a0a18", minHeight:"100vh" }}>
         {currentPage==="home"    && <HomePage    onSelect={openDrama} onNav={handleNav} user={user} onLoginClick={()=>setShowAuth(true)}/>}
         {currentPage==="catalog" && <CatalogPage onSelect={openDrama} initCountry={catalogCountry}/>}
         {currentPage==="search"  && <SearchPage  onSelect={openDrama}/>}

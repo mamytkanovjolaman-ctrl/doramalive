@@ -7,10 +7,7 @@ const KEY  = (typeof process!=="undefined" && process.env?.REACT_APP_TMDB_KEY) |
 const BASE = "https://api.themoviedb.org/3";
 const IMG  = "https://image.tmdb.org/t/p/w500";
 const IMGB = "https://image.tmdb.org/t/p/w1280";
-
-// Drama-producing countries
-const DRAMA_COUNTRIES = { "Корея":"KR", "Китай":"CN", "Япония":"JP", "Тайвань":"TW", "Таиланд":"TH" };
-const GENRES_MAP = { "Все":null, "Романтика":10749, "Драма":18, "Комедия":35, "Фэнтези":10765, "Криминал":80, "Исторический":36 };
+const IMGF = "https://image.tmdb.org/t/p/w185";
 
 async function tmdb(path, params={}) {
   const q = new URLSearchParams({ api_key:KEY, language:"ru-RU", ...params });
@@ -18,47 +15,48 @@ async function tmdb(path, params={}) {
   return r.json();
 }
 
-// Fetch popular dramas by country
-async function fetchDramas(country="KR", genre=null, page=1) {
-  const params = {
-    with_original_language: country.toLowerCase(),
-    sort_by: "popularity.desc",
-    "vote_count.gte": 50,
-    page,
+async function fetchByCategory(category, page=1) {
+  const endpoints = {
+    "trending":  ["/trending/all/week", {}],
+    "dramas":    ["/discover/tv", { with_genres:18, with_original_language:"ko|zh|ja", sort_by:"popularity.desc", "vote_count.gte":50 }],
+    "korean":    ["/discover/tv", { with_original_language:"ko", sort_by:"popularity.desc", "vote_count.gte":30 }],
+    "chinese":   ["/discover/tv", { with_original_language:"zh", sort_by:"popularity.desc", "vote_count.gte":30 }],
+    "japanese":  ["/discover/tv", { with_original_language:"ja", sort_by:"popularity.desc", "vote_count.gte":30 }],
+    "anime":     ["/discover/tv", { with_genres:16, sort_by:"popularity.desc", "vote_count.gte":50 }],
+    "movies":    ["/discover/movie", { sort_by:"popularity.desc", "vote_count.gte":100 }],
+    "new":       ["/discover/tv", { sort_by:"first_air_date.desc", "vote_count.gte":20, "first_air_date.gte":"2024-01-01" }],
+    "top":       ["/discover/tv", { sort_by:"vote_average.desc", "vote_count.gte":200 }],
+    "top_movies":["/discover/movie", { sort_by:"vote_average.desc", "vote_count.gte":500 }],
   };
-  if (genre) params.with_genres = genre;
-  const data = await tmdb("/discover/tv", params);
-  return data;
+  const [path, params2] = endpoints[category] || endpoints["trending"];
+  return tmdb(path, { ...params2, page });
 }
 
-async function searchDramas(query, page=1) {
-  return tmdb("/search/tv", { query, page });
+async function searchAll(query, page=1) {
+  return tmdb("/search/multi", { query, page });
 }
 
-async function fetchDetails(id) {
-  return tmdb(`/tv/${id}`, { append_to_response:"credits,similar" });
+async function fetchDetails(id, type="tv") {
+  return tmdb(`/${type}/${id}`, { append_to_response:"credits,similar,videos" });
 }
 
-async function fetchTrending() {
-  return tmdb("/trending/tv/week");
-}
-
-// Format TMDB show to our format
-function formatShow(show) {
+function formatItem(item) {
+  const isMovie = item.media_type==="movie" || item.title;
   return {
-    id: show.id,
-    title: show.name || show.original_name,
-    en: show.original_name,
-    rating: show.vote_average ? (show.vote_average/2).toFixed(1) : "?",
-    year: show.first_air_date ? show.first_air_date.slice(0,4) : "?",
-    country: show.origin_country?.[0] || "?",
-    episodes: show.number_of_episodes || "?",
-    genre: show.genre_ids || [],
-    poster: show.poster_path ? IMG+show.poster_path : null,
-    backdrop: show.backdrop_path ? IMGB+show.backdrop_path : null,
-    desc: show.overview || "Описание отсутствует.",
-    tag: show.vote_average>=8?"ХИТ": show.first_air_date>="2025"?"НОВИНКА":"",
-    tagColor: show.vote_average>=8?"#ff4e6a":"#4e9fff",
+    id: item.id,
+    type: isMovie ? "movie" : "tv",
+    title: item.name || item.title || item.original_name || item.original_title,
+    en: item.original_name || item.original_title,
+    rating: item.vote_average ? (item.vote_average/2).toFixed(1) : "?",
+    year: (item.first_air_date||item.release_date||"")?.slice(0,4) || "?",
+    episodes: item.number_of_episodes || null,
+    genre: item.genre_ids || [],
+    poster: item.poster_path ? IMG+item.poster_path : null,
+    backdrop: item.backdrop_path ? IMGB+item.backdrop_path : null,
+    desc: item.overview || "Описание отсутствует.",
+    tag: item.vote_average>=8?"ХИТ":(item.first_air_date||item.release_date||"")>="2025-01-01"?"НОВИНКА":"",
+    tagColor: item.vote_average>=8?"#ff4e6a":"#4e9fff",
+    isMovie,
   };
 }
 
@@ -67,55 +65,86 @@ function formatShow(show) {
 // ═══════════════════════════════════════════════════════════
 const IPlay   = ({s=20}) => <svg width={s} height={s} viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21"/></svg>;
 const IStar   = ({s=12}) => <svg width={s} height={s} viewBox="0 0 12 12" fill="#FFD700"><polygon points="6,1 7.5,4.5 11,5 8.5,7.5 9,11 6,9.5 3,11 3.5,7.5 1,5 4.5,4.5"/></svg>;
-const IBack   = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15,18 9,12 15,6"/></svg>;
-const ISearch = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>;
-const IBm     = ({on}) => <svg width="18" height="18" viewBox="0 0 24 24" fill={on?"#ff4e6a":"none"} stroke={on?"#ff4e6a":"currentColor"} strokeWidth="2"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>;
-const IShare  = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>;
-const ICheck  = () => <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20,6 9,17 4,12"/></svg>;
-const ICR     = ({s=15}) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9,18 15,12 9,6"/></svg>;
-const ICL     = ({s=15}) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15,18 9,12 15,6"/></svg>;
-const IFilter = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="22,3 2,3 10,12.46 10,19 14,21 14,12.46 22,3"/></svg>;
-const IGrid   = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>;
-const IList   = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>;
+const IBack   = () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15,18 9,12 15,6"/></svg>;
+const ISearch = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>;
+const IBm     = ({on}) => <svg width="20" height="20" viewBox="0 0 24 24" fill={on?"#ff4e6a":"none"} stroke={on?"#ff4e6a":"currentColor"} strokeWidth="2"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>;
+const IShare  = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>;
+const ICR     = ({s=16}) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9,18 15,12 9,6"/></svg>;
+const ICL     = ({s=16}) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15,18 9,12 15,6"/></svg>;
+const IFilter = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="22,3 2,3 10,12.46 10,19 14,21 14,12.46 22,3"/></svg>;
+const IGrid   = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>;
+const IList   = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>;
+const IFilm   = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg>;
 
 // ═══════════════════════════════════════════════════════════
-//  SHARED COMPONENTS
+//  SHARED
 // ═══════════════════════════════════════════════════════════
-function PosterImg({ show, style={}, fontSize=36 }) {
+function PosterImg({ item, style={}, fontSize=36 }) {
   const [err, setErr] = useState(false);
-  if (show?.poster && !err) {
-    return <img src={show.poster} alt={show.title}
-      style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", ...style }}
+  if (item?.poster && !err) {
+    return <img src={item.poster} alt={item?.title||""}
+      style={{ width:"100%", height:"100%", objectFit:"cover", objectPosition:"top center", display:"block", ...style }}
       onError={()=>setErr(true)}/>;
   }
-  // Fallback gradient
   const colors = ["#1a0533,#c94b8a","#0a1628,#c8873a","#0d2b1a,#2ecc71","#0a0a2e,#4a4acf",
-    "#1a0a00,#cf6b1a","#001a1a,#00bcd4","#1a0000,#cf1a1a","#0a1a0a,#2d8a5e","#1a0a1a,#8a2d8a"];
-  const idx = (show?.id||0) % colors.length;
-  const emojis = ["🌸","🏯","💍","⭐","🐉","🏥","🧵","🌙","⚔️","⚖️","🌿","✨"];
+    "#1a0a00,#cf6b1a","#001a1a,#00bcd4","#1a0000,#cf1a1a","#0a1a0a,#2d8a5e","#1a0a1a,#8a2d8a",
+    "#0a0520,#6b1a8a","#1a1a00,#8a8a00","#001a0a,#008a4a"];
+  const idx = (item?.id||0) % colors.length;
+  const emojis = ["🎬","🎥","🎞️","📽️","🎭","🌟","⭐","🏆","🎪","✨","🌸","🔥"];
   return (
     <div style={{ width:"100%", height:"100%", display:"flex", alignItems:"center",
       justifyContent:"center", position:"relative", overflow:"hidden",
       background:`linear-gradient(145deg,${colors[idx]})`, ...style }}>
       <div style={{ fontSize, filter:"drop-shadow(0 4px 12px rgba(0,0,0,0.5))" }}>
-        {emojis[(show?.id||0)%emojis.length]}
+        {emojis[(item?.id||0)%emojis.length]}
       </div>
+      <div style={{ position:"absolute", inset:0,
+        background:"radial-gradient(circle at 30% 25%, rgba(255,255,255,0.08) 0%, transparent 55%)" }}/>
     </div>
   );
+}
+
+function ActorPhoto({ actor }) {
+  const [err, setErr] = useState(false);
+  if (actor.profile_path && !err) {
+    return <img src={IMGF+actor.profile_path} alt={actor.name}
+      style={{ width:"100%", height:"100%", objectFit:"cover", objectPosition:"top" }}
+      onError={()=>setErr(true)}/>;
+  }
+  return <div style={{ width:"100%", height:"100%", display:"flex", alignItems:"center",
+    justifyContent:"center", background:"linear-gradient(135deg,rgba(255,78,106,0.3),rgba(255,126,66,0.3))",
+    fontSize:24 }}>🎭</div>;
 }
 
 function Tag({ label, color }) {
   if (!label) return null;
   return <div style={{ display:"inline-block", background:color, color:"#fff",
-    fontSize:9, fontWeight:800, padding:"2px 8px", borderRadius:5,
-    fontFamily:"'Bebas Neue',sans-serif", letterSpacing:"0.08em" }}>{label}</div>;
+    fontSize:10, fontWeight:800, padding:"3px 9px", borderRadius:6,
+    fontFamily:"'Montserrat',sans-serif", letterSpacing:"0.06em" }}>{label}</div>;
 }
 
-function Spinner() {
-  return <div style={{ display:"flex", alignItems:"center", justifyContent:"center",
-    padding:"40px 0" }}>
-    <div style={{ width:36, height:36, border:"3px solid rgba(255,78,106,0.2)",
-      borderTop:"3px solid #ff4e6a", borderRadius:"50%", animation:"spin 0.8s linear infinite" }}/>
+function TypeBadge({ isMovie }) {
+  return <div style={{ display:"inline-block",
+    background: isMovie?"rgba(100,100,255,0.8)":"rgba(255,78,106,0.8)",
+    color:"#fff", fontSize:9, fontWeight:700, padding:"2px 7px", borderRadius:4,
+    fontFamily:"'Montserrat',sans-serif", letterSpacing:"0.05em" }}>
+    {isMovie?"ФИЛЬМ":"СЕРИАЛ"}
+  </div>;
+}
+
+function Spinner({ size=36 }) {
+  return <div style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:"40px 0" }}>
+    <div style={{ width:size, height:size, border:`3px solid rgba(255,78,106,0.2)`,
+      borderTop:`3px solid #ff4e6a`, borderRadius:"50%", animation:"spin 0.8s linear infinite" }}/>
+  </div>;
+}
+
+// LOGO
+function Logo({ size=24 }) {
+  return <div style={{ fontSize:size, fontFamily:"'Montserrat',sans-serif", fontWeight:900, letterSpacing:"-0.02em" }}>
+    <span style={{ background:"linear-gradient(90deg,#ff4e6a,#ff7e42)",
+      WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>Be</span>
+    <span style={{ color:"#fff" }}>Movie</span>
   </div>;
 }
 
@@ -129,16 +158,16 @@ function BottomNav({ page, onNav }) {
   return (
     <div className="bottom-nav-bar" style={{ position:"fixed", bottom:0, left:"50%",
       transform:"translateX(-50%)", width:"100%", maxWidth:1400,
-      background:"rgba(8,8,20,0.97)", backdropFilter:"blur(16px)",
-      borderTop:"1px solid rgba(255,255,255,0.07)",
-      display:"flex", justifyContent:"space-around", padding:"8px 0 14px", zIndex:80 }}>
+      background:"rgba(6,6,18,0.98)", backdropFilter:"blur(20px)",
+      borderTop:"1px solid rgba(255,255,255,0.06)",
+      display:"flex", justifyContent:"space-around", padding:"8px 0 16px", zIndex:80 }}>
       {items.map(it=>(
         <div key={it.id} onClick={()=>onNav(it.id)}
-          style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:3,
-            cursor:"pointer", opacity:page===it.id?1:0.4, transition:"opacity 0.2s" }}>
-          <div style={{ fontSize:20 }}>{it.icon}</div>
-          <div style={{ fontSize:9, color:page===it.id?"#ff4e6a":"#fff",
-            fontWeight:page===it.id?700:500 }}>{it.label}</div>
+          style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:4,
+            cursor:"pointer", opacity:page===it.id?1:0.35, transition:"all 0.2s" }}>
+          <div style={{ fontSize:22 }}>{it.icon}</div>
+          <div style={{ fontSize:10, color:page===it.id?"#ff4e6a":"#fff",
+            fontWeight:page===it.id?700:500, fontFamily:"'Montserrat',sans-serif" }}>{it.label}</div>
         </div>
       ))}
     </div>
@@ -148,63 +177,76 @@ function BottomNav({ page, onNav }) {
 // ═══════════════════════════════════════════════════════════
 //  CARD
 // ═══════════════════════════════════════════════════════════
-function Card({ show, onClick }) {
+function Card({ item, onClick }) {
   const [hov, setHov] = useState(false);
   return (
-    <div onClick={()=>onClick(show)}
+    <div onClick={()=>onClick(item)}
       onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
-      style={{ cursor:"pointer", borderRadius:13, overflow:"hidden", position:"relative",
+      style={{ cursor:"pointer", borderRadius:14, overflow:"hidden", position:"relative",
         aspectRatio:"2/3", flexShrink:0,
-        boxShadow:hov?"0 14px 36px rgba(0,0,0,0.6)":"0 4px 14px rgba(0,0,0,0.35)",
-        transform:hov?"translateY(-5px) scale(1.02)":"none",
-        transition:"all 0.22s cubic-bezier(.34,1.56,.64,1)" }}>
-      <PosterImg show={show} fontSize={30}/>
+        boxShadow:hov?"0 20px 50px rgba(0,0,0,0.7)":"0 4px 16px rgba(0,0,0,0.4)",
+        transform:hov?"translateY(-6px) scale(1.03)":"none",
+        transition:"all 0.25s cubic-bezier(.34,1.56,.64,1)" }}>
+      <PosterImg item={item} fontSize={32}/>
       <div style={{ position:"absolute", inset:0,
-        background:"linear-gradient(to top,rgba(0,0,0,0.96) 0%,rgba(0,0,0,0.3) 45%,transparent 100%)" }}/>
-      <div style={{ position:"absolute", top:7, left:7 }}><Tag label={show.tag} color={show.tagColor}/></div>
-      <div style={{ position:"absolute", top:7, right:7, background:"rgba(0,0,0,0.72)",
-        borderRadius:6, padding:"2px 6px", display:"flex", alignItems:"center", gap:3,
-        fontSize:10, color:"#FFD700", fontWeight:700 }}>
-        <IStar s={9}/>{show.rating}
+        background:"linear-gradient(to top,rgba(0,0,0,0.97) 0%,rgba(0,0,0,0.2) 50%,transparent 100%)" }}/>
+      <div style={{ position:"absolute", top:8, left:8, display:"flex", flexDirection:"column", gap:4 }}>
+        {item.tag&&<Tag label={item.tag} color={item.tagColor}/>}
+        <TypeBadge isMovie={item.isMovie}/>
+      </div>
+      <div style={{ position:"absolute", top:8, right:8, background:"rgba(0,0,0,0.75)",
+        borderRadius:7, padding:"3px 7px", display:"flex", alignItems:"center", gap:3,
+        fontSize:11, color:"#FFD700", fontWeight:700, fontFamily:"'Montserrat',sans-serif" }}>
+        <IStar s={10}/>{item.rating}
       </div>
       {hov&&<div style={{ position:"absolute", inset:0, display:"flex",
-        alignItems:"center", justifyContent:"center" }}>
-        <div style={{ width:44, height:44, borderRadius:"50%", background:"rgba(255,78,106,0.9)",
+        alignItems:"center", justifyContent:"center",
+        background:"rgba(0,0,0,0.2)" }}>
+        <div style={{ width:50, height:50, borderRadius:"50%", background:"rgba(255,78,106,0.92)",
           display:"flex", alignItems:"center", justifyContent:"center", color:"#fff",
-          boxShadow:"0 0 24px rgba(255,78,106,0.7)" }}><IPlay s={17}/></div>
+          boxShadow:"0 0 30px rgba(255,78,106,0.7)" }}><IPlay s={20}/></div>
       </div>}
-      <div style={{ position:"absolute", bottom:0, left:0, right:0, padding:"9px 8px 8px" }}>
-        <div style={{ color:"#fff", fontSize:10, fontWeight:700, lineHeight:1.3,
-          fontFamily:"'Bebas Neue',sans-serif",
+      <div style={{ position:"absolute", bottom:0, left:0, right:0, padding:"12px 10px 10px" }}>
+        <div style={{ color:"#fff", fontSize:12, fontWeight:700, lineHeight:1.3,
+          fontFamily:"'Montserrat',sans-serif",
           display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", overflow:"hidden" }}>
-          {show.title}
+          {item.title}
         </div>
-        <div style={{ color:"rgba(255,255,255,0.38)", fontSize:9, marginTop:1,
-          overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{show.en}</div>
+        <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, marginTop:3,
+          overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+          fontFamily:"'Montserrat',sans-serif" }}>{item.year}</div>
       </div>
     </div>
   );
 }
 
-// Row card for list view
-function CardRow({ show, onClick }) {
+function CardRow({ item, onClick }) {
   return (
-    <div onClick={()=>onClick(show)}
-      style={{ display:"flex", gap:12, padding:"11px 0",
-        borderBottom:"1px solid rgba(255,255,255,0.05)", cursor:"pointer" }}>
-      <div style={{ width:70, height:98, borderRadius:10, overflow:"hidden", flexShrink:0 }}>
-        <PosterImg show={show} fontSize={24}/>
+    <div onClick={()=>onClick(item)}
+      style={{ display:"flex", gap:14, padding:"13px 0",
+        borderBottom:"1px solid rgba(255,255,255,0.05)", cursor:"pointer" }}
+      onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.03)"}
+      onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+      <div style={{ width:72, height:100, borderRadius:11, overflow:"hidden",
+        flexShrink:0, boxShadow:"0 4px 16px rgba(0,0,0,0.4)" }}>
+        <PosterImg item={item} fontSize={24}/>
       </div>
       <div style={{ flex:1, minWidth:0, paddingTop:2 }}>
-        <div style={{ marginBottom:4 }}><Tag label={show.tag} color={show.tagColor}/></div>
-        <div style={{ fontSize:14, fontWeight:800, color:"#fff", lineHeight:1.2,
-          fontFamily:"'Bebas Neue',sans-serif", marginBottom:3 }}>{show.title}</div>
-        <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginBottom:6 }}>{show.en}</div>
-        <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+        <div style={{ display:"flex", gap:6, marginBottom:6, flexWrap:"wrap" }}>
+          {item.tag&&<Tag label={item.tag} color={item.tagColor}/>}
+          <TypeBadge isMovie={item.isMovie}/>
+        </div>
+        <div style={{ fontSize:15, fontWeight:700, color:"#fff", lineHeight:1.2,
+          fontFamily:"'Montserrat',sans-serif", marginBottom:4 }}>{item.title}</div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginBottom:8,
+          fontFamily:"'Montserrat',sans-serif" }}>{item.en}</div>
+        <div style={{ display:"flex", gap:10, alignItems:"center" }}>
           <div style={{ display:"flex", alignItems:"center", gap:3 }}>
-            <IStar s={11}/><span style={{ color:"#FFD700", fontSize:12, fontWeight:700 }}>{show.rating}</span>
+            <IStar s={12}/><span style={{ color:"#FFD700", fontSize:13, fontWeight:700,
+              fontFamily:"'Montserrat',sans-serif" }}>{item.rating}</span>
           </div>
-          <span style={{ color:"rgba(255,255,255,0.35)", fontSize:11 }}>{show.year}</span>
+          <span style={{ color:"rgba(255,255,255,0.35)", fontSize:12,
+            fontFamily:"'Montserrat',sans-serif" }}>{item.year}</span>
         </div>
       </div>
       <div style={{ display:"flex", alignItems:"center", color:"rgba(255,255,255,0.2)", flexShrink:0 }}>
@@ -214,38 +256,40 @@ function CardRow({ show, onClick }) {
   );
 }
 
-// Horizontal scroll section
-function Section({ title, icon, shows, onSelect, loading }) {
+function Section({ title, icon, items, onSelect, loading }) {
   const ref = useRef(null);
   return (
-    <div style={{ marginBottom:30 }}>
+    <div style={{ marginBottom:36 }}>
       <div className="page-wrap" style={{ display:"flex", alignItems:"center",
-        justifyContent:"space-between", marginBottom:11 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:7 }}>
-          <span>{icon}</span>
-          <span style={{ fontSize:16, fontWeight:800, color:"#fff",
-            fontFamily:"'Bebas Neue',sans-serif", letterSpacing:"0.03em" }}>{title}</span>
+        justifyContent:"space-between", marginBottom:14 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          <span style={{ fontSize:20 }}>{icon}</span>
+          <span style={{ fontSize:18, fontWeight:800, color:"#fff",
+            fontFamily:"'Montserrat',sans-serif", letterSpacing:"-0.01em" }}>{title}</span>
         </div>
-        <div style={{ display:"flex", alignItems:"center", gap:2,
-          color:"#ff4e6a", fontSize:12, cursor:"pointer", fontWeight:600 }}>
-          Все <ICR s={13}/>
+        <div style={{ display:"flex", alignItems:"center", gap:3,
+          color:"#ff4e6a", fontSize:13, cursor:"pointer", fontWeight:700,
+          fontFamily:"'Montserrat',sans-serif" }}>
+          Все <ICR s={14}/>
         </div>
       </div>
       {loading ? <Spinner/> : (
         <div style={{ position:"relative" }}>
-          <div ref={ref} className="section-cards" style={{ padding:"4px 18px 6px" }}>
-            {shows.map(s=><div key={s.id} className="card-item"><Card show={s} onClick={onSelect}/></div>)}
+          <div ref={ref} className="section-cards" style={{ padding:"4px 18px 8px" }}>
+            {items.map(s=><div key={s.id} className="card-item"><Card item={s} onClick={onSelect}/></div>)}
           </div>
-          <button onClick={()=>ref.current&&(ref.current.scrollLeft-=300)}
-            style={{ position:"absolute", left:4, top:"37%", transform:"translateY(-50%)",
-              background:"rgba(10,10,24,0.9)", border:"1px solid rgba(255,255,255,0.1)",
-              color:"#fff", width:30, height:30, borderRadius:"50%", cursor:"pointer",
-              display:"flex", alignItems:"center", justifyContent:"center" }}><ICL s={13}/></button>
-          <button onClick={()=>ref.current&&(ref.current.scrollLeft+=300)}
-            style={{ position:"absolute", right:4, top:"37%", transform:"translateY(-50%)",
-              background:"rgba(10,10,24,0.9)", border:"1px solid rgba(255,255,255,0.1)",
-              color:"#fff", width:30, height:30, borderRadius:"50%", cursor:"pointer",
-              display:"flex", alignItems:"center", justifyContent:"center" }}><ICR s={13}/></button>
+          <button onClick={()=>ref.current&&(ref.current.scrollLeft-=340)}
+            style={{ position:"absolute", left:4, top:"38%", transform:"translateY(-50%)",
+              background:"rgba(8,8,20,0.92)", border:"1px solid rgba(255,255,255,0.12)",
+              color:"#fff", width:34, height:34, borderRadius:"50%", cursor:"pointer",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              boxShadow:"0 4px 12px rgba(0,0,0,0.4)" }}><ICL s={14}/></button>
+          <button onClick={()=>ref.current&&(ref.current.scrollLeft+=340)}
+            style={{ position:"absolute", right:4, top:"38%", transform:"translateY(-50%)",
+              background:"rgba(8,8,20,0.92)", border:"1px solid rgba(255,255,255,0.12)",
+              color:"#fff", width:34, height:34, borderRadius:"50%", cursor:"pointer",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              boxShadow:"0 4px 12px rgba(0,0,0,0.4)" }}><ICR s={14}/></button>
         </div>
       )}
     </div>
@@ -256,177 +300,174 @@ function Section({ title, icon, shows, onSelect, loading }) {
 //  HOME PAGE
 // ═══════════════════════════════════════════════════════════
 function HomePage({ onSelect, onNav, user, onLoginClick }) {
-  const [trending, setTrending]   = useState([]);
-  const [korean,   setKorean]     = useState([]);
-  const [chinese,  setChinese]    = useState([]);
-  const [japanese, setJapanese]   = useState([]);
-  const [loading,  setLoading]    = useState(true);
-  const [heroIdx,  setHeroIdx]    = useState(0);
+  const [trending, setTrending] = useState([]);
+  const [dramas,   setDramas]   = useState([]);
+  const [movies,   setMovies]   = useState([]);
+  const [anime,    setAnime]    = useState([]);
+  const [newItems, setNewItems] = useState([]);
+  const [top,      setTop]      = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const [heroIdx,  setHeroIdx]  = useState(0);
   const scrollRef = useRef(null);
-  const [scrolled, setScrolled]   = useState(false);
+  const [scrolled, setScrolled] = useState(false);
 
   useEffect(()=>{
     const el = scrollRef.current;
     if (!el) return;
-    const fn=()=>setScrolled(el.scrollTop>50);
+    const fn=()=>setScrolled(el.scrollTop>60);
     el.addEventListener("scroll",fn);
     return()=>el.removeEventListener("scroll",fn);
   },[]);
 
   useEffect(()=>{
     Promise.all([
-      fetchTrending(),
-      fetchDramas("ko"),
-      fetchDramas("zh"),
-      fetchDramas("ja"),
-    ]).then(([tr,kr,cn,jp])=>{
-      setTrending((tr.results||[]).map(formatShow));
-      setKorean((kr.results||[]).map(formatShow));
-      setChinese((cn.results||[]).map(formatShow));
-      setJapanese((jp.results||[]).map(formatShow));
+      fetchByCategory("trending"),
+      fetchByCategory("dramas"),
+      fetchByCategory("movies"),
+      fetchByCategory("anime"),
+      fetchByCategory("new"),
+      fetchByCategory("top"),
+    ]).then(([tr,dr,mv,an,nw,tp])=>{
+      setTrending((tr.results||[]).map(formatItem));
+      setDramas((dr.results||[]).map(formatItem));
+      setMovies((mv.results||[]).map(formatItem));
+      setAnime((an.results||[]).map(formatItem));
+      setNewItems((nw.results||[]).map(formatItem));
+      setTop((tp.results||[]).map(formatItem));
       setLoading(false);
     }).catch(()=>setLoading(false));
   },[]);
 
   useEffect(()=>{
-    if (trending.length===0) return;
-    const t = setInterval(()=>setHeroIdx(i=>(i+1)%Math.min(trending.length,5)),5000);
+    if (!trending.length) return;
+    const t = setInterval(()=>setHeroIdx(i=>(i+1)%Math.min(trending.length,6)),5000);
     return()=>clearInterval(t);
   },[trending.length]);
 
   const hero = trending[heroIdx];
 
   return (
-    <div ref={scrollRef} style={{ height:"100vh", overflowY:"auto", paddingBottom:70 }}>
+    <div ref={scrollRef} style={{ height:"100vh", overflowY:"auto", paddingBottom:80 }}>
       {/* NAV */}
       <nav style={{ position:"sticky", top:0, zIndex:50, width:"100%",
-        background:scrolled?"rgba(10,10,24,0.97)":"transparent",
-        backdropFilter:scrolled?"blur(16px)":"none",
+        background:scrolled?"rgba(6,6,18,0.98)":"transparent",
+        backdropFilter:scrolled?"blur(20px)":"none",
         borderBottom:scrolled?"1px solid rgba(255,255,255,0.06)":"none",
-        transition:"all 0.3s", height:58 }}>
+        transition:"all 0.3s", height:62 }}>
         <div className="nav-wrap">
-          <div style={{ fontSize:21, fontFamily:"'Bebas Neue',sans-serif" }}>
-            <span style={{ background:"linear-gradient(90deg,#ff4e6a,#ff7e42)",
-              WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>DORAMA</span>
-            <span style={{ color:"#fff" }}>LIVE</span>
-          </div>
+          <Logo size={22}/>
           <div className="desktop-nav">
-            {["Главная","Каталог","Новинки","Топ"].map(l=>(
-              <span key={l} onClick={()=>l==="Каталог"&&onNav("catalog")}
-                style={{ color:"rgba(255,255,255,0.55)", fontSize:13, fontWeight:600, cursor:"pointer" }}
+            {[
+              {label:"Главная", action:()=>onNav("home")},
+              {label:"Каталог", action:()=>onNav("catalog")},
+              {label:"Новинки", action:()=>onNav("catalog",{cat:"new"})},
+              {label:"Топ",     action:()=>onNav("catalog",{cat:"top"})},
+              {label:"Аниме",   action:()=>onNav("catalog",{cat:"anime"})},
+              {label:"Фильмы",  action:()=>onNav("catalog",{cat:"movies"})},
+            ].map(({label,action})=>(
+              <span key={label} onClick={action}
+                style={{ color:"rgba(255,255,255,0.55)", fontSize:14, fontWeight:600,
+                  cursor:"pointer", fontFamily:"'Montserrat',sans-serif", transition:"color 0.2s" }}
                 onMouseEnter={e=>e.target.style.color="#fff"}
-                onMouseLeave={e=>e.target.style.color="rgba(255,255,255,0.55)"}>{l}</span>
+                onMouseLeave={e=>e.target.style.color="rgba(255,255,255,0.55)"}>{label}</span>
             ))}
           </div>
-          <div>
+          <div style={{ display:"flex", gap:10, alignItems:"center" }}>
+            <button onClick={()=>onNav("search")} className="desktop-nav"
+              style={{ background:"rgba(255,255,255,0.08)", border:"none", color:"rgba(255,255,255,0.6)",
+                width:38, height:38, borderRadius:10, cursor:"pointer",
+                display:"flex", alignItems:"center", justifyContent:"center" }}>
+              <ISearch/>
+            </button>
             {user
-              ? <div style={{ width:34, height:34, borderRadius:"50%",
+              ? <div style={{ width:38, height:38, borderRadius:"50%",
                   background:"linear-gradient(135deg,#ff4e6a,#ff7e42)",
                   display:"flex", alignItems:"center", justifyContent:"center",
-                  fontSize:14, fontWeight:700, color:"#fff", cursor:"pointer" }}
+                  fontSize:16, fontWeight:700, color:"#fff", cursor:"pointer",
+                  fontFamily:"'Montserrat',sans-serif" }}
                   onClick={()=>onNav("fav")}>{user.name[0].toUpperCase()}</div>
               : <button onClick={onLoginClick} style={{ background:"linear-gradient(90deg,#ff4e6a,#ff7e42)",
-                  border:"none", color:"#fff", padding:"7px 18px", borderRadius:8,
-                  fontSize:12, fontWeight:700, cursor:"pointer",
-                  fontFamily:"'Bebas Neue',sans-serif", letterSpacing:"0.05em" }}>ВОЙТИ</button>}
+                  border:"none", color:"#fff", padding:"8px 20px", borderRadius:10,
+                  fontSize:13, fontWeight:700, cursor:"pointer",
+                  fontFamily:"'Montserrat',sans-serif", letterSpacing:"0.02em",
+                  boxShadow:"0 4px 16px rgba(255,78,106,0.35)" }}>Войти</button>}
           </div>
         </div>
       </nav>
 
-      {/* HERO BANNER */}
-      <div style={{ position:"relative", height:420, overflow:"hidden",
-        borderRadius:"0 0 24px 24px", marginTop:-58 }}>
+      {/* HERO */}
+      <div style={{ position:"relative", height:480, overflow:"hidden",
+        borderRadius:"0 0 28px 28px", marginTop:-62 }}>
         {hero?.backdrop
-          ? <img src={hero.backdrop} alt={hero.title}
-              style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover",
-                transition:"opacity 0.8s" }}/>
-          : hero
-            ? <PosterImg show={hero} style={{ position:"absolute", inset:0 }} fontSize={120}/>
-            : <div style={{ position:"absolute", inset:0, background:"linear-gradient(135deg,#1a0533,#0a1628)" }}/>}
+          ? <img src={hero.backdrop} alt={hero?.title||""}
+              style={{ position:"absolute", inset:0, width:"100%", height:"100%",
+                objectFit:"cover", objectPosition:"center 20%", transition:"opacity 0.8s" }}/>
+          : <div style={{ position:"absolute", inset:0,
+              background:"linear-gradient(135deg,#1a0533 0%,#0a1628 100%)" }}/>}
         <div style={{ position:"absolute", inset:0,
-          background:"linear-gradient(135deg,rgba(0,0,0,0.78) 0%,rgba(0,0,0,0.1) 60%,rgba(0,0,0,0.5) 100%)" }}/>
+          background:"linear-gradient(135deg,rgba(0,0,0,0.82) 0%,rgba(0,0,0,0.05) 55%,rgba(0,0,0,0.6) 100%)" }}/>
         {hero && (
-          <div style={{ position:"absolute", bottom:32, left:20, right:20 }}>
-            <div style={{ marginBottom:7 }}><Tag label={hero.tag} color={hero.tagColor}/></div>
-            <div style={{ fontSize:32, fontWeight:800, color:"#fff", lineHeight:1.1,
-              fontFamily:"'Bebas Neue',sans-serif", letterSpacing:"0.02em", marginBottom:7,
-              textShadow:"0 2px 20px rgba(0,0,0,0.5)",
-              display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", overflow:"hidden" }}>
-              {hero.title}
-            </div>
-            <div style={{ color:"rgba(255,255,255,0.6)", fontSize:12, lineHeight:1.6, marginBottom:14,
-              maxWidth:380, display:"-webkit-box", WebkitLineClamp:2,
-              WebkitBoxOrient:"vertical", overflow:"hidden" }}>{hero.desc}</div>
-            <div style={{ display:"flex", gap:9, alignItems:"center", flexWrap:"wrap" }}>
-              <button onClick={()=>onSelect(hero)} style={{ padding:"9px 20px",
-                background:"linear-gradient(90deg,#ff4e6a,#ff7e42)", border:"none",
-                color:"#fff", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer",
-                display:"flex", alignItems:"center", gap:6,
-                fontFamily:"'Bebas Neue',sans-serif", letterSpacing:"0.06em",
-                boxShadow:"0 6px 20px rgba(255,78,106,0.45)" }}>
-                <IPlay s={13}/> СМОТРЕТЬ
-              </button>
-              <div style={{ display:"flex", alignItems:"center", gap:5,
-                background:"rgba(255,255,255,0.12)", borderRadius:8, padding:"7px 11px",
-                backdropFilter:"blur(8px)" }}>
-                <IStar s={12}/><span style={{ color:"#FFD700", fontWeight:700, fontSize:12 }}>{hero.rating}</span>
-                <span style={{ color:"rgba(255,255,255,0.45)", fontSize:11 }}>• {hero.year}</span>
+          <div style={{ position:"absolute", bottom:36, left:0, right:0 }}>
+            <div className="page-wrap">
+              <div style={{ display:"flex", gap:8, marginBottom:10, flexWrap:"wrap" }}>
+                {hero.tag&&<Tag label={hero.tag} color={hero.tagColor}/>}
+                <TypeBadge isMovie={hero.isMovie}/>
+              </div>
+              <div style={{ fontSize:42, fontWeight:900, color:"#fff", lineHeight:1.05,
+                fontFamily:"'Montserrat',sans-serif", letterSpacing:"-0.02em", marginBottom:10,
+                textShadow:"0 2px 24px rgba(0,0,0,0.6)",
+                display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", overflow:"hidden",
+                maxWidth:600 }}>{hero.title}</div>
+              <div style={{ color:"rgba(255,255,255,0.65)", fontSize:14, lineHeight:1.6, marginBottom:20,
+                maxWidth:440, display:"-webkit-box", WebkitLineClamp:2,
+                WebkitBoxOrient:"vertical", overflow:"hidden",
+                fontFamily:"'Montserrat',sans-serif" }}>{hero.desc}</div>
+              <div style={{ display:"flex", gap:10, alignItems:"center", flexWrap:"wrap" }}>
+                <button onClick={()=>onSelect(hero)} style={{ padding:"12px 28px",
+                  background:"linear-gradient(90deg,#ff4e6a,#ff7e42)", border:"none",
+                  color:"#fff", borderRadius:12, fontSize:15, fontWeight:700, cursor:"pointer",
+                  display:"flex", alignItems:"center", gap:8,
+                  fontFamily:"'Montserrat',sans-serif",
+                  boxShadow:"0 8px 24px rgba(255,78,106,0.5)" }}>
+                  <IPlay s={15}/> Смотреть
+                </button>
+                <div style={{ display:"flex", alignItems:"center", gap:6,
+                  background:"rgba(255,255,255,0.12)", borderRadius:10, padding:"10px 16px",
+                  backdropFilter:"blur(10px)" }}>
+                  <IStar s={14}/><span style={{ color:"#FFD700", fontWeight:700, fontSize:14,
+                    fontFamily:"'Montserrat',sans-serif" }}>{hero.rating}</span>
+                  <span style={{ color:"rgba(255,255,255,0.5)", fontSize:13,
+                    fontFamily:"'Montserrat',sans-serif" }}>• {hero.year}</span>
+                </div>
               </div>
             </div>
           </div>
         )}
-        {/* Dots */}
-        <div style={{ position:"absolute", bottom:12, right:16, display:"flex", gap:5 }}>
-          {trending.slice(0,5).map((_,i)=>(
+        <div style={{ position:"absolute", bottom:14, right:20, display:"flex", gap:6 }}>
+          {trending.slice(0,6).map((_,i)=>(
             <div key={i} onClick={()=>setHeroIdx(i)}
-              style={{ width:i===heroIdx?16:5, height:5, borderRadius:3, cursor:"pointer",
+              style={{ width:i===heroIdx?20:6, height:6, borderRadius:3, cursor:"pointer",
                 transition:"all 0.3s", background:i===heroIdx?"#ff4e6a":"rgba(255,255,255,0.3)" }}/>
           ))}
         </div>
       </div>
 
-      <div style={{ height:18 }}/>
+      <div style={{ height:24 }}/>
 
-      {loading ? <Spinner/> : (
+      {loading ? <Spinner size={44}/> : (
         <>
-          <Section title="ПОПУЛЯРНОЕ"  icon="🔥" shows={trending.slice(0,20)} onSelect={onSelect} loading={false}/>
-          <Section title="КОРЕЙСКИЕ"   icon="🇰🇷" shows={korean.slice(0,20)}   onSelect={onSelect} loading={false}/>
-          <Section title="КИТАЙСКИЕ"   icon="🇨🇳" shows={chinese.slice(0,20)}  onSelect={onSelect} loading={false}/>
-          <Section title="ЯПОНСКИЕ"    icon="🇯🇵" shows={japanese.slice(0,20)} onSelect={onSelect} loading={false}/>
+          <Section title="В тренде"    icon="🔥" items={trending.slice(0,20)} onSelect={onSelect} loading={false}/>
+          <Section title="Дорамы"      icon="🎎" items={dramas.slice(0,20)}   onSelect={onSelect} loading={false}/>
+          <Section title="Фильмы"      icon="🎬" items={movies.slice(0,20)}   onSelect={onSelect} loading={false}/>
+          <Section title="Аниме"       icon="⛩️" items={anime.slice(0,20)}    onSelect={onSelect} loading={false}/>
+          <Section title="Новинки"     icon="✨" items={newItems.slice(0,20)} onSelect={onSelect} loading={false}/>
+          <Section title="Топ рейтинг" icon="🏆" items={top.slice(0,20)}     onSelect={onSelect} loading={false}/>
         </>
       )}
 
-      {/* Countries */}
-      <div className="page-wrap" style={{ paddingBottom:32 }}>
-        <div style={{ fontSize:16, fontWeight:800, color:"#fff",
-          fontFamily:"'Bebas Neue',sans-serif", marginBottom:11 }}>🌏 ПО СТРАНАМ</div>
-        <div className="countries-grid">
-          {Object.entries(DRAMA_COUNTRIES).map(([name])=>(
-            <div key={name} onClick={()=>onNav("catalog", {country:name})}
-              style={{ borderRadius:13, overflow:"hidden", position:"relative",
-                height:86, cursor:"pointer",
-                background:`linear-gradient(135deg,${name==="Корея"?"#1a0533,#c94b8a":name==="Китай"?"#1a0a00,#cf6b1a":name==="Япония"?"#1a0000,#cf1a1a":name==="Тайвань"?"#0a1a0a,#2d8a5e":"#0a0520,#4a1a8a"})`,
-                transition:"transform 0.2s" }}
-              onMouseEnter={e=>e.currentTarget.style.transform="scale(1.02)"}
-              onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
-              <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.4)" }}/>
-              <div style={{ position:"absolute", bottom:10, left:12 }}>
-                <div style={{ fontSize:14, fontWeight:800, color:"#fff",
-                  fontFamily:"'Bebas Neue',sans-serif" }}>{name}</div>
-              </div>
-              <div style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)",
-                fontSize:28 }}>
-                {name==="Корея"?"🇰🇷":name==="Китай"?"🇨🇳":name==="Япония"?"🇯🇵":name==="Тайвань"?"🇹🇼":"🇹🇭"}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* TMDB attribution */}
-      <div style={{ textAlign:"center", padding:"10px 0 20px",
-        color:"rgba(255,255,255,0.2)", fontSize:10 }}>
-        Данные предоставлены <span style={{ color:"rgba(255,255,255,0.4)" }}>TMDB</span>
+      <div style={{ textAlign:"center", padding:"10px 0 24px",
+        color:"rgba(255,255,255,0.15)", fontSize:11, fontFamily:"'Montserrat',sans-serif" }}>
+        Данные предоставлены TMDB
       </div>
     </div>
   );
@@ -435,119 +476,95 @@ function HomePage({ onSelect, onNav, user, onLoginClick }) {
 // ═══════════════════════════════════════════════════════════
 //  CATALOG PAGE
 // ═══════════════════════════════════════════════════════════
-function CatalogPage({ onSelect, initCountry="" }) {
-  const [shows,   setShows]   = useState([]);
+const CATS = [
+  { id:"trending", label:"В тренде",    icon:"🔥" },
+  { id:"dramas",   label:"Дорамы",      icon:"🎎" },
+  { id:"movies",   label:"Фильмы",      icon:"🎬" },
+  { id:"anime",    label:"Аниме",       icon:"⛩️" },
+  { id:"new",      label:"Новинки",     icon:"✨" },
+  { id:"top",      label:"Топ",         icon:"🏆" },
+  { id:"korean",   label:"Корейские",   icon:"🇰🇷" },
+  { id:"chinese",  label:"Китайские",   icon:"🇨🇳" },
+  { id:"japanese", label:"Японские",    icon:"🇯🇵" },
+];
+
+function CatalogPage({ onSelect, initCat="trending" }) {
+  const [items,   setItems]   = useState([]);
   const [loading, setLoading] = useState(true);
   const [page,    setPage]    = useState(1);
   const [total,   setTotal]   = useState(0);
-  const [country, setCountry] = useState(initCountry||"Корея");
-  const [genre,   setGenre]   = useState("Все");
+  const [cat,     setCat]     = useState(initCat||"trending");
   const [view,    setView]    = useState("grid");
-  const [showF,   setShowF]   = useState(false);
 
-  const load = useCallback(async (c, g, p, reset=false) => {
+  const load = useCallback(async(c, p, reset=false)=>{
     setLoading(true);
-    const langMap = {"Корея":"ko","Китай":"zh","Япония":"ja","Тайвань":"zh","Таиланд":"th"};
-    const data = await fetchDramas(langMap[c]||"ko", GENRES_MAP[g]||null, p);
-    const formatted = (data.results||[]).map(formatShow);
-    setShows(prev => reset ? formatted : [...prev, ...formatted]);
+    const data = await fetchByCategory(c, p);
+    const formatted = (data.results||[]).map(formatItem);
+    setItems(prev=>reset?formatted:[...prev,...formatted]);
     setTotal(data.total_results||0);
     setLoading(false);
-  }, []);
+  },[]);
 
-  useEffect(()=>{ setPage(1); load(country, genre, 1, true); }, [country, genre]);
-
-  const loadMore = () => {
-    const next = page+1;
-    setPage(next);
-    load(country, genre, next, false);
-  };
+  useEffect(()=>{ setPage(1); load(cat,1,true); },[cat]);
 
   return (
-    <div style={{ height:"100vh", overflowY:"auto", paddingBottom:70 }}>
-      {/* Header */}
+    <div style={{ height:"100vh", overflowY:"auto", paddingBottom:80 }}>
       <div style={{ position:"sticky", top:0, zIndex:50,
-        background:"rgba(10,10,24,0.97)", backdropFilter:"blur(16px)",
-        borderBottom:"1px solid rgba(255,255,255,0.06)", padding:"12px 16px 0" }}>
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
-          <div style={{ fontSize:21, fontFamily:"'Bebas Neue',sans-serif" }}>
-            <span style={{ background:"linear-gradient(90deg,#ff4e6a,#ff7e42)",
-              WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>DORAMA</span>
-            <span style={{ color:"#fff" }}>LIVE</span>
-          </div>
+        background:"rgba(6,6,18,0.98)", backdropFilter:"blur(20px)",
+        borderBottom:"1px solid rgba(255,255,255,0.06)", padding:"14px 16px 0" }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+          <Logo size={20}/>
           <div style={{ display:"flex", gap:8 }}>
             <button onClick={()=>setView(v=>v==="grid"?"list":"grid")}
               style={{ background:"rgba(255,255,255,0.07)", border:"none",
-                color:"rgba(255,255,255,0.7)", width:34, height:34, borderRadius:9,
+                color:"rgba(255,255,255,0.7)", width:36, height:36, borderRadius:10,
                 cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
               {view==="grid"?<IList/>:<IGrid/>}
             </button>
-            <button onClick={()=>setShowF(f=>!f)}
-              style={{ background:showF?"rgba(255,78,106,0.2)":"rgba(255,255,255,0.07)",
-                border:showF?"1px solid rgba(255,78,106,0.4)":"none",
-                color:showF?"#ff4e6a":"rgba(255,255,255,0.7)",
-                width:34, height:34, borderRadius:9, cursor:"pointer",
-                display:"flex", alignItems:"center", justifyContent:"center" }}>
-              <IFilter/>
-            </button>
           </div>
         </div>
-
-        {/* Country tabs */}
-        <div style={{ display:"flex", gap:7, overflowX:"auto", scrollbarWidth:"none", paddingBottom:10 }}>
-          {Object.keys(DRAMA_COUNTRIES).map(c=>(
-            <button key={c} onClick={()=>setCountry(c)} style={{
-              flexShrink:0, padding:"6px 14px", borderRadius:20,
-              border: country===c?"none":"1px solid rgba(255,255,255,0.12)",
-              background: country===c?"linear-gradient(90deg,#ff4e6a,#ff7e42)":"rgba(255,255,255,0.05)",
-              color: country===c?"#fff":"rgba(255,255,255,0.5)",
-              fontSize:12, fontWeight:600, cursor:"pointer" }}>{c}</button>
+        <div style={{ display:"flex", gap:8, overflowX:"auto", scrollbarWidth:"none", paddingBottom:12 }}>
+          {CATS.map(c=>(
+            <button key={c.id} onClick={()=>setCat(c.id)} style={{
+              flexShrink:0, padding:"7px 16px", borderRadius:22,
+              border: cat===c.id?"none":"1px solid rgba(255,255,255,0.12)",
+              background: cat===c.id?"linear-gradient(90deg,#ff4e6a,#ff7e42)":"rgba(255,255,255,0.05)",
+              color: cat===c.id?"#fff":"rgba(255,255,255,0.5)",
+              fontSize:13, fontWeight:600, cursor:"pointer",
+              fontFamily:"'Montserrat',sans-serif", whiteSpace:"nowrap",
+              boxShadow:cat===c.id?"0 4px 14px rgba(255,78,106,0.35)":"none" }}>
+              {c.icon} {c.label}
+            </button>
           ))}
         </div>
-
-        {/* Genre filter */}
-        {showF && (
-          <div style={{ paddingBottom:12, borderTop:"1px solid rgba(255,255,255,0.05)", paddingTop:10 }}>
-            <div style={{ display:"flex", gap:6, overflowX:"auto", scrollbarWidth:"none" }}>
-              {Object.keys(GENRES_MAP).map(g=>(
-                <button key={g} onClick={()=>setGenre(g)} style={{
-                  flexShrink:0, padding:"4px 12px", borderRadius:16,
-                  border: genre===g?"none":"1px solid rgba(255,255,255,0.1)",
-                  background: genre===g?"rgba(255,78,106,0.2)":"rgba(255,255,255,0.04)",
-                  color: genre===g?"#ff7e8e":"rgba(255,255,255,0.42)",
-                  fontSize:11, fontWeight:600, cursor:"pointer" }}>{g}</button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
-      <div style={{ padding:"10px 16px 0", fontSize:12, color:"rgba(255,255,255,0.3)", marginBottom:8 }}>
-        Найдено: <span style={{ color:"rgba(255,255,255,0.6)", fontWeight:700 }}>{total.toLocaleString()}</span> дорам
+      <div style={{ padding:"10px 16px 8px", fontSize:13, color:"rgba(255,255,255,0.35)",
+        fontFamily:"'Montserrat',sans-serif" }}>
+        Найдено: <span style={{ color:"rgba(255,255,255,0.65)", fontWeight:700 }}>{total.toLocaleString()}</span>
       </div>
 
       {view==="grid"
         ? <div className="catalog-grid" style={{ padding:"0 16px" }}>
-            {shows.map(s=><Card key={s.id} show={s} onClick={onSelect}/>)}
+            {items.map(s=><Card key={s.id} item={s} onClick={onSelect}/>)}
           </div>
         : <div style={{ padding:"0 16px" }}>
-            {shows.map(s=><CardRow key={s.id} show={s} onClick={onSelect}/>)}
+            {items.map(s=><CardRow key={s.id} item={s} onClick={onSelect}/>)}
           </div>}
 
       {loading && <Spinner/>}
 
-      {!loading && shows.length>0 && (
-        <div style={{ textAlign:"center", padding:"20px 0 10px" }}>
-          <button onClick={loadMore} style={{ padding:"10px 32px",
-            background:"rgba(255,78,106,0.15)", border:"1px solid rgba(255,78,106,0.3)",
-            color:"#ff7e8e", borderRadius:10, fontSize:13, fontWeight:600, cursor:"pointer" }}>
+      {!loading && items.length>0 && (
+        <div style={{ textAlign:"center", padding:"24px 0 12px" }}>
+          <button onClick={()=>{ const next=page+1; setPage(next); load(cat,next,false); }}
+            style={{ padding:"11px 36px",
+              background:"rgba(255,78,106,0.12)", border:"1px solid rgba(255,78,106,0.3)",
+              color:"#ff7e8e", borderRadius:12, fontSize:14, fontWeight:600, cursor:"pointer",
+              fontFamily:"'Montserrat',sans-serif" }}>
             Загрузить ещё
           </button>
         </div>
       )}
-
-      <div style={{ textAlign:"center", padding:"10px 0 20px",
-        color:"rgba(255,255,255,0.15)", fontSize:10 }}>Данные предоставлены TMDB</div>
     </div>
   );
 }
@@ -555,7 +572,7 @@ function CatalogPage({ onSelect, initCountry="" }) {
 // ═══════════════════════════════════════════════════════════
 //  SEARCH PAGE
 // ═══════════════════════════════════════════════════════════
-const POPULAR = ["Корейская романтика","Исторический Китай","Фэнтези","Медицинская драма","Детектив","Школьная дорама"];
+const POPULAR_Q = ["Корейская дорама","Аниме 2024","Боевик","Комедия","Мелодрама","Фэнтези","Триллер","Исторический"];
 
 function SearchPage({ onSelect }) {
   const [query,   setQuery]   = useState("");
@@ -572,8 +589,8 @@ function SearchPage({ onSelect }) {
     if (!query.trim()) { setResults([]); return; }
     setLoading(true);
     timerRef.current = setTimeout(async()=>{
-      const data = await searchDramas(query);
-      setResults((data.results||[]).map(formatShow));
+      const data = await searchAll(query);
+      setResults((data.results||[]).filter(r=>r.media_type!=="person").map(formatItem));
       setLoading(false);
     }, 500);
   },[query]);
@@ -584,89 +601,85 @@ function SearchPage({ onSelect }) {
   };
 
   return (
-    <div style={{ height:"100vh", overflowY:"auto", paddingBottom:70,
-      background:"#0a0a18", fontFamily:"'Manrope',sans-serif", color:"#fff" }}>
+    <div style={{ height:"100vh", overflowY:"auto", paddingBottom:80,
+      background:"#060612", color:"#fff" }}>
       <div style={{ position:"sticky", top:0, zIndex:50,
-        background:"rgba(10,10,24,0.97)", backdropFilter:"blur(16px)",
-        borderBottom:"1px solid rgba(255,255,255,0.06)", padding:"14px 16px 12px" }}>
-        <div style={{ fontSize:21, fontFamily:"'Bebas Neue',sans-serif", marginBottom:12 }}>
-          <span style={{ background:"linear-gradient(90deg,#ff4e6a,#ff7e42)",
-            WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>DORAMA</span>
-          <span style={{ color:"#fff" }}>LIVE</span>
-        </div>
+        background:"rgba(6,6,18,0.98)", backdropFilter:"blur(20px)",
+        borderBottom:"1px solid rgba(255,255,255,0.06)", padding:"16px 16px 14px" }}>
+        <div style={{ marginBottom:14 }}><Logo size={20}/></div>
         <div style={{ position:"relative" }}>
-          <div style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)",
+          <div style={{ position:"absolute", left:14, top:"50%", transform:"translateY(-50%)",
             color:"rgba(255,255,255,0.3)" }}><ISearch/></div>
           <input ref={inputRef} value={query} onChange={e=>setQuery(e.target.value)}
-            placeholder="Поиск по названию..."
-            style={{ width:"100%", padding:"11px 40px 11px 42px",
+            placeholder="Фильмы, сериалы, аниме, дорамы..."
+            style={{ width:"100%", padding:"13px 44px 13px 46px",
               background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.1)",
-              borderRadius:12, color:"#fff", fontSize:14, outline:"none",
-              fontFamily:"'Manrope',sans-serif", boxSizing:"border-box" }}
+              borderRadius:13, color:"#fff", fontSize:15, outline:"none",
+              fontFamily:"'Montserrat',sans-serif", boxSizing:"border-box" }}
             onFocus={e=>e.target.style.borderColor="rgba(255,78,106,0.5)"}
             onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
           {query&&<button onClick={()=>setQuery("")}
-            style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)",
+            style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)",
               background:"rgba(255,255,255,0.12)", border:"none", color:"rgba(255,255,255,0.6)",
-              width:22, height:22, borderRadius:"50%", cursor:"pointer",
-              display:"flex", alignItems:"center", justifyContent:"center", fontSize:13 }}>×</button>}
+              width:24, height:24, borderRadius:"50%", cursor:"pointer",
+              display:"flex", alignItems:"center", justifyContent:"center", fontSize:14 }}>×</button>}
         </div>
       </div>
 
       <div style={{ padding:"16px 16px 0" }}>
         {loading && <Spinner/>}
-
         {!loading && results.length>0 && (
           <div>
-            <div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", marginBottom:12 }}>
-              Найдено: <span style={{ color:"rgba(255,255,255,0.6)", fontWeight:700 }}>{results.length}</span>
+            <div style={{ fontSize:13, color:"rgba(255,255,255,0.35)", marginBottom:14,
+              fontFamily:"'Montserrat',sans-serif" }}>
+              Найдено: <span style={{ color:"rgba(255,255,255,0.65)", fontWeight:700 }}>{results.length}</span>
             </div>
-            {results.map(s=><CardRow key={s.id} show={s} onClick={handleSelect}/>)}
+            {results.map(s=><CardRow key={s.id} item={s} onClick={handleSelect}/>)}
           </div>
         )}
-
         {!loading && query && results.length===0 && (
-          <div style={{ textAlign:"center", padding:"50px 0" }}>
-            <div style={{ fontSize:48, marginBottom:12 }}>😔</div>
-            <div style={{ fontSize:15, color:"rgba(255,255,255,0.5)" }}>Ничего не найдено</div>
+          <div style={{ textAlign:"center", padding:"60px 0" }}>
+            <div style={{ fontSize:52, marginBottom:14 }}>😔</div>
+            <div style={{ fontSize:16, color:"rgba(255,255,255,0.5)",
+              fontFamily:"'Montserrat',sans-serif" }}>Ничего не найдено</div>
           </div>
         )}
-
         {!query && (
           <>
             {history.length>0 && (
-              <div style={{ marginBottom:24 }}>
+              <div style={{ marginBottom:28 }}>
                 <div style={{ display:"flex", justifyContent:"space-between", marginBottom:12 }}>
-                  <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)",
-                    fontFamily:"'Bebas Neue',sans-serif", letterSpacing:"0.07em" }}>ИСТОРИЯ</div>
+                  <div style={{ fontSize:13, fontWeight:700, color:"rgba(255,255,255,0.4)",
+                    fontFamily:"'Montserrat',sans-serif" }}>ИСТОРИЯ</div>
                   <button onClick={()=>setHistory([])}
                     style={{ background:"none", border:"none", color:"rgba(255,255,255,0.28)",
-                      fontSize:11, cursor:"pointer" }}>Очистить</button>
+                      fontSize:12, cursor:"pointer", fontFamily:"'Montserrat',sans-serif" }}>Очистить</button>
                 </div>
                 {history.map(h=>(
                   <div key={h} onClick={()=>setQuery(h)}
-                    style={{ display:"flex", gap:12, padding:"10px 12px", borderRadius:10,
-                      cursor:"pointer" }}
+                    style={{ display:"flex", gap:14, padding:"11px 12px", borderRadius:11,
+                      cursor:"pointer", alignItems:"center" }}
                     onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.05)"}
                     onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                    <span style={{ opacity:0.35 }}>🕐</span>
-                    <span style={{ fontSize:13, color:"rgba(255,255,255,0.6)", flex:1 }}>{h}</span>
+                    <span style={{ opacity:0.35, fontSize:16 }}>🕐</span>
+                    <span style={{ fontSize:14, color:"rgba(255,255,255,0.65)", flex:1,
+                      fontFamily:"'Montserrat',sans-serif" }}>{h}</span>
                     <span onClick={e=>{e.stopPropagation();setHistory(p=>p.filter(x=>x!==h));}}
-                      style={{ color:"rgba(255,255,255,0.2)", cursor:"pointer", fontSize:16 }}>×</span>
+                      style={{ color:"rgba(255,255,255,0.2)", cursor:"pointer", fontSize:18 }}>×</span>
                   </div>
                 ))}
               </div>
             )}
-            <div style={{ marginBottom:20 }}>
-              <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)", marginBottom:12,
-                fontFamily:"'Bebas Neue',sans-serif", letterSpacing:"0.07em" }}>ПОПУЛЯРНЫЕ ЗАПРОСЫ</div>
-              <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                {POPULAR.map(q=>(
+            <div>
+              <div style={{ fontSize:13, fontWeight:700, color:"rgba(255,255,255,0.4)", marginBottom:14,
+                fontFamily:"'Montserrat',sans-serif" }}>ПОПУЛЯРНЫЕ ЗАПРОСЫ</div>
+              <div style={{ display:"flex", gap:9, flexWrap:"wrap" }}>
+                {POPULAR_Q.map(q=>(
                   <button key={q} onClick={()=>setQuery(q)} style={{
-                    padding:"7px 14px", borderRadius:20,
+                    padding:"8px 16px", borderRadius:22,
                     background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)",
-                    color:"rgba(255,255,255,0.55)", fontSize:12, fontWeight:600,
-                    cursor:"pointer" }}>🔍 {q}</button>
+                    color:"rgba(255,255,255,0.6)", fontSize:13, fontWeight:600,
+                    cursor:"pointer", fontFamily:"'Montserrat',sans-serif" }}>🔍 {q}</button>
                 ))}
               </div>
             </div>
@@ -680,7 +693,7 @@ function SearchPage({ onSelect }) {
 // ═══════════════════════════════════════════════════════════
 //  WATCH PAGE
 // ═══════════════════════════════════════════════════════════
-function WatchPage({ show: s, onBack, isFav, onToggleFav }) {
+function WatchPage({ item: s, onBack, isFav, onToggleFav }) {
   const [ep,      setEp]      = useState(1);
   const [bm,      setBm]      = useState(isFav||false);
   const [exp,     setExp]     = useState(false);
@@ -688,241 +701,274 @@ function WatchPage({ show: s, onBack, isFav, onToggleFav }) {
   const [details, setDetails] = useState(null);
 
   useEffect(()=>{
-    fetchDetails(s.id).then(setDetails).catch(()=>{});
+    fetchDetails(s.id, s.type||"tv").then(setDetails).catch(()=>{});
+    window.scrollTo(0,0);
   },[s.id]);
 
-  const epCount  = details?.number_of_episodes || s.episodes || 12;
-  const cast     = details?.credits?.cast?.slice(0,6).map(c=>c.name) || [];
-  const director = details?.credits?.crew?.find(c=>c.job==="Director")?.name || "";
+  const epCount  = details?.number_of_episodes || (s.isMovie ? 1 : 12);
+  const cast     = details?.credits?.cast?.slice(0,8) || [];
+  const director = details?.credits?.crew?.find(c=>c.job==="Director");
   const desc     = details?.overview || s.desc;
   const rating   = details?.vote_average ? (details.vote_average/2).toFixed(1) : s.rating;
   const backdrop = details?.backdrop_path ? IMGB+details.backdrop_path : s.backdrop;
   const genres   = details?.genres?.map(g=>g.name) || [];
-  const episodes = Array.from({length:Math.min(epCount,100)},(_,i)=>({num:i+1,dur:`${42+Math.floor(Math.random()*10)} мин`}));
-
+  const episodes = Array.from({length:Math.min(epCount,150)},(_,i)=>({num:i+1,dur:`${s.isMovie?120:42+Math.floor(Math.random()*15)} мин`}));
   const goEp = n => { setEp(n); setPlay(false); };
 
   return (
-    <div className="watch-container" style={{ background:"#0a0a18", minHeight:"100vh",
-      color:"#fff", fontFamily:"'Manrope',sans-serif", paddingBottom:70 }}>
+    <div className="watch-container" style={{ background:"#060612", minHeight:"100vh",
+      color:"#fff", paddingBottom:80 }}>
 
       {/* TOP NAV */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
-        padding:"11px 14px", position:"sticky", top:0, zIndex:50,
-        background:"rgba(10,10,24,0.96)", backdropFilter:"blur(14px)",
+        padding:"12px 16px", position:"sticky", top:0, zIndex:50,
+        background:"rgba(6,6,18,0.97)", backdropFilter:"blur(16px)",
         borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
         <button onClick={onBack} style={{ background:"rgba(255,255,255,0.08)", border:"none",
-          color:"#fff", width:36, height:36, borderRadius:10, cursor:"pointer",
+          color:"#fff", width:40, height:40, borderRadius:11, cursor:"pointer",
           display:"flex", alignItems:"center", justifyContent:"center" }}><IBack/></button>
-        <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", display:"flex", gap:5 }}>
-          <span onClick={onBack} style={{ cursor:"pointer", color:"rgba(255,255,255,0.55)" }}>Каталог</span>
+        <div style={{ fontSize:12, color:"rgba(255,255,255,0.35)", display:"flex", gap:6,
+          fontFamily:"'Montserrat',sans-serif" }}>
+          <span onClick={onBack} style={{ cursor:"pointer", color:"rgba(255,255,255,0.6)" }}>Главная</span>
           <span>/</span>
-          <span style={{ color:"rgba(255,255,255,0.25)", maxWidth:160,
+          <span style={{ color:"rgba(255,255,255,0.25)", maxWidth:180,
             overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.title}</span>
         </div>
-        <div style={{ display:"flex", gap:7 }}>
+        <div style={{ display:"flex", gap:8 }}>
           <button onClick={()=>{setBm(b=>!b);onToggleFav&&onToggleFav();}}
             style={{ background:bm?"rgba(255,78,106,0.15)":"rgba(255,255,255,0.08)",
               border:bm?"1px solid rgba(255,78,106,0.4)":"1px solid transparent",
-              color:"#fff", width:36, height:36, borderRadius:10, cursor:"pointer",
+              color:"#fff", width:40, height:40, borderRadius:11, cursor:"pointer",
               display:"flex", alignItems:"center", justifyContent:"center" }}><IBm on={bm}/></button>
           <button style={{ background:"rgba(255,255,255,0.08)", border:"none", color:"#fff",
-            width:36, height:36, borderRadius:10, cursor:"pointer",
+            width:40, height:40, borderRadius:11, cursor:"pointer",
             display:"flex", alignItems:"center", justifyContent:"center" }}><IShare/></button>
         </div>
       </div>
 
       {/* HERO */}
-      <div style={{ position:"relative", height:250, overflow:"hidden" }}>
+      <div style={{ position:"relative", height:280, overflow:"hidden" }}>
         {backdrop
           ? <img src={backdrop} alt={s.title}
-              style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover" }}/>
-          : <PosterImg show={s} style={{ position:"absolute", inset:0 }} fontSize={80}/>}
+              style={{ position:"absolute", inset:0, width:"100%", height:"100%",
+                objectFit:"cover", objectPosition:"center 20%" }}/>
+          : <div style={{ position:"absolute", inset:0, background:"linear-gradient(135deg,#1a0533,#0a1628)" }}/>}
         <div style={{ position:"absolute", inset:0,
-          background:"linear-gradient(to bottom,rgba(0,0,0,0.2) 0%,rgba(10,10,24,1) 100%)" }}/>
+          background:"linear-gradient(to bottom,rgba(0,0,0,0.15) 0%,rgba(6,6,18,1) 100%)" }}/>
         <div style={{ position:"absolute", bottom:0, left:0, right:0,
-          padding:"0 16px 18px", display:"flex", gap:13, alignItems:"flex-end" }}>
-          <div style={{ width:82, height:114, borderRadius:11, overflow:"hidden", flexShrink:0,
-            boxShadow:"0 8px 28px rgba(0,0,0,0.7)", border:"2px solid rgba(255,255,255,0.1)" }}>
-            <PosterImg show={s} fontSize={28}/>
+          padding:"0 18px 20px", display:"flex", gap:16, alignItems:"flex-end" }}>
+          <div style={{ width:90, height:126, borderRadius:13, overflow:"hidden", flexShrink:0,
+            boxShadow:"0 10px 32px rgba(0,0,0,0.8)", border:"2px solid rgba(255,255,255,0.12)" }}>
+            <PosterImg item={s} fontSize={30}/>
           </div>
-          <div style={{ flex:1, minWidth:0, paddingBottom:3 }}>
-            <div style={{ marginBottom:5 }}><Tag label={s.tag} color={s.tagColor}/></div>
-            <div style={{ fontSize:19, fontWeight:800, color:"#fff", lineHeight:1.15,
-              fontFamily:"'Bebas Neue',sans-serif", letterSpacing:"0.02em", marginBottom:4 }}>
-              {details?.name||s.title}
+          <div style={{ flex:1, minWidth:0, paddingBottom:4 }}>
+            <div style={{ display:"flex", gap:7, marginBottom:7, flexWrap:"wrap" }}>
+              {s.tag&&<Tag label={s.tag} color={s.tagColor}/>}
+              <TypeBadge isMovie={s.isMovie}/>
             </div>
-            <div style={{ color:"rgba(255,255,255,0.35)", fontSize:11, marginBottom:7 }}>{s.en}</div>
-            <div style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap" }}>
-              <div style={{ display:"flex", alignItems:"center", gap:3,
-                background:"rgba(0,0,0,0.45)", backdropFilter:"blur(6px)",
-                borderRadius:7, padding:"3px 7px" }}>
-                <IStar s={11}/><span style={{ color:"#FFD700", fontWeight:700, fontSize:12 }}>{rating}</span>
+            <div style={{ fontSize:22, fontWeight:800, color:"#fff", lineHeight:1.15,
+              fontFamily:"'Montserrat',sans-serif", letterSpacing:"-0.01em", marginBottom:5 }}>
+              {details?.name||details?.title||s.title}
+            </div>
+            <div style={{ color:"rgba(255,255,255,0.35)", fontSize:12, marginBottom:8,
+              fontFamily:"'Montserrat',sans-serif" }}>{s.en}</div>
+            <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:4,
+                background:"rgba(0,0,0,0.5)", backdropFilter:"blur(6px)",
+                borderRadius:8, padding:"4px 9px" }}>
+                <IStar s={13}/><span style={{ color:"#FFD700", fontWeight:700, fontSize:13,
+                  fontFamily:"'Montserrat',sans-serif" }}>{rating}</span>
               </div>
-              {[s.year, `${epCount} сер.`].map(v=>
-                <span key={v} style={{ color:"rgba(255,255,255,0.45)", fontSize:11 }}>{v}</span>)}
+              {[s.year, s.isMovie?null:`${epCount} сер.`].filter(Boolean).map(v=>
+                <span key={v} style={{ color:"rgba(255,255,255,0.5)", fontSize:12,
+                  fontFamily:"'Montserrat',sans-serif" }}>{v}</span>)}
             </div>
           </div>
         </div>
       </div>
 
       {/* GENRES */}
-      {genres.length>0&&<div style={{ padding:"12px 16px 0", display:"flex", gap:6, flexWrap:"wrap" }}>
-        {genres.map(g=><span key={g} style={{ background:"rgba(255,78,106,0.12)", color:"#ff7e8e",
-          fontSize:11, padding:"4px 11px", borderRadius:8,
-          border:"1px solid rgba(255,78,106,0.22)" }}>{g}</span>)}
+      {genres.length>0&&<div style={{ padding:"14px 18px 0", display:"flex", gap:7, flexWrap:"wrap" }}>
+        {genres.map(g=><span key={g} style={{ background:"rgba(255,78,106,0.1)", color:"#ff9eaa",
+          fontSize:12, padding:"5px 13px", borderRadius:9, fontFamily:"'Montserrat',sans-serif",
+          border:"1px solid rgba(255,78,106,0.2)" }}>{g}</span>)}
       </div>}
 
       {/* DESC */}
-      <div style={{ padding:"12px 16px" }}>
-        <div style={{ color:"rgba(255,255,255,0.58)", fontSize:13, lineHeight:1.8,
-          overflow:"hidden", maxHeight:exp?"none":"55px",
+      <div style={{ padding:"14px 18px" }}>
+        <div style={{ color:"rgba(255,255,255,0.6)", fontSize:14, lineHeight:1.8,
+          fontFamily:"'Montserrat',sans-serif",
+          overflow:"hidden", maxHeight:exp?"none":"62px",
           maskImage:exp?"none":"linear-gradient(to bottom,black 40%,transparent 100%)",
           WebkitMaskImage:exp?"none":"linear-gradient(to bottom,black 40%,transparent 100%)" }}>{desc}</div>
         <button onClick={()=>setExp(e=>!e)} style={{ background:"none", border:"none",
-          color:"#ff4e6a", fontSize:12, fontWeight:700, cursor:"pointer",
-          marginTop:4, padding:0 }}>{exp?"Свернуть ↑":"Читать далее ↓"}</button>
+          color:"#ff4e6a", fontSize:13, fontWeight:700, cursor:"pointer",
+          marginTop:6, padding:0, fontFamily:"'Montserrat',sans-serif" }}>
+          {exp?"Свернуть ↑":"Читать далее ↓"}</button>
       </div>
 
-      {/* CAST */}
-      {cast.length>0&&<div style={{ padding:"0 16px 14px" }}>
-        <div style={{ fontSize:11, color:"rgba(255,255,255,0.28)", marginBottom:9,
-          fontFamily:"'Bebas Neue',sans-serif", letterSpacing:"0.08em" }}>В ГЛАВНЫХ РОЛЯХ</div>
-        <div style={{ display:"flex", gap:12, overflowX:"auto", scrollbarWidth:"none" }}>
-          {cast.map(name=>(
-            <div key={name} style={{ flexShrink:0, textAlign:"center" }}>
-              <div style={{ width:48, height:48, borderRadius:"50%", margin:"0 auto 5px",
-                background:"linear-gradient(135deg,rgba(255,78,106,0.3),rgba(255,126,66,0.3))",
-                border:"2px solid rgba(255,78,106,0.22)",
-                display:"flex", alignItems:"center", justifyContent:"center", fontSize:18 }}>🎭</div>
-              <div style={{ color:"rgba(255,255,255,0.58)", fontSize:10, fontWeight:600,
-                maxWidth:60, textAlign:"center", lineHeight:1.3 }}>{name}</div>
+      {/* CAST — with real photos */}
+      {cast.length>0&&<div style={{ padding:"0 18px 16px" }}>
+        <div style={{ fontSize:13, fontWeight:700, color:"rgba(255,255,255,0.4)", marginBottom:12,
+          fontFamily:"'Montserrat',sans-serif", letterSpacing:"0.04em" }}>В ГЛАВНЫХ РОЛЯХ</div>
+        <div style={{ display:"flex", gap:14, overflowX:"auto", scrollbarWidth:"none", paddingBottom:4 }}>
+          {cast.map(actor=>(
+            <div key={actor.id} style={{ flexShrink:0, textAlign:"center", width:68 }}>
+              <div style={{ width:64, height:64, borderRadius:"50%", margin:"0 auto 7px",
+                overflow:"hidden", border:"2px solid rgba(255,78,106,0.3)",
+                boxShadow:"0 4px 12px rgba(0,0,0,0.4)" }}>
+                <ActorPhoto actor={actor}/>
+              </div>
+              <div style={{ color:"rgba(255,255,255,0.7)", fontSize:10, fontWeight:600,
+                fontFamily:"'Montserrat',sans-serif", lineHeight:1.3,
+                display:"-webkit-box", WebkitLineClamp:2,
+                WebkitBoxOrient:"vertical", overflow:"hidden" }}>{actor.name}</div>
+              {actor.character&&<div style={{ color:"rgba(255,255,255,0.3)", fontSize:9, marginTop:2,
+                fontFamily:"'Montserrat',sans-serif", overflow:"hidden",
+                textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{actor.character}</div>}
             </div>
           ))}
         </div>
       </div>}
 
-      {/* INFO */}
-      <div style={{ margin:"0 16px 16px", background:"rgba(255,255,255,0.04)",
-        borderRadius:13, border:"1px solid rgba(255,255,255,0.07)", overflow:"hidden" }}>
+      {/* INFO TABLE */}
+      <div style={{ margin:"0 18px 18px", background:"rgba(255,255,255,0.04)",
+        borderRadius:14, border:"1px solid rgba(255,255,255,0.07)", overflow:"hidden" }}>
         {[
           ["Год", s.year],
-          ["Серий", String(epCount)],
-          director&&["Режиссёр", director],
-          details?.networks?.[0]?.name&&["Канал", details.networks[0].name],
+          !s.isMovie&&["Серий", String(epCount)],
+          director&&["Режиссёр", director.name],
+          details?.networks?.[0]&&["Канал", details.networks[0].name],
+          details?.production_countries?.[0]&&["Страна", details.production_countries[0].name],
         ].filter(Boolean).map(([k,v],i,arr)=>(
           <div key={k} style={{ display:"flex", justifyContent:"space-between",
-            alignItems:"center", padding:"10px 15px",
+            alignItems:"center", padding:"12px 16px",
             borderBottom:i<arr.length-1?"1px solid rgba(255,255,255,0.05)":"none" }}>
-            <span style={{ color:"rgba(255,255,255,0.32)", fontSize:12 }}>{k}</span>
-            <span style={{ color:"rgba(255,255,255,0.76)", fontSize:12, fontWeight:600 }}>{v}</span>
+            <span style={{ color:"rgba(255,255,255,0.35)", fontSize:13,
+              fontFamily:"'Montserrat',sans-serif" }}>{k}</span>
+            <span style={{ color:"rgba(255,255,255,0.8)", fontSize:13, fontWeight:600,
+              fontFamily:"'Montserrat',sans-serif" }}>{v}</span>
           </div>
         ))}
       </div>
 
-      <div style={{ margin:"0 16px 16px", height:1, background:"rgba(255,255,255,0.06)" }}/>
+      <div style={{ margin:"0 18px 18px", height:1, background:"rgba(255,255,255,0.06)" }}/>
 
       {/* PLAYER */}
-      <div style={{ padding:"0 16px 9px", display:"flex", alignItems:"center", gap:8 }}>
-        <div style={{ width:3, height:17, background:"linear-gradient(180deg,#ff4e6a,#ff7e42)", borderRadius:2 }}/>
-        <span style={{ fontSize:14, fontWeight:800, fontFamily:"'Bebas Neue',sans-serif",
-          letterSpacing:"0.03em" }}>СМОТРЕТЬ</span>
-        <span style={{ fontSize:12, color:"rgba(255,255,255,0.32)" }}>Серия {ep} из {epCount}</span>
+      <div style={{ padding:"0 18px 10px", display:"flex", alignItems:"center", gap:10 }}>
+        <div style={{ width:4, height:20, background:"linear-gradient(180deg,#ff4e6a,#ff7e42)", borderRadius:2 }}/>
+        <span style={{ fontSize:16, fontWeight:800, fontFamily:"'Montserrat',sans-serif" }}>
+          {s.isMovie ? "Смотреть фильм" : `Смотреть · Серия ${ep} из ${epCount}`}
+        </span>
       </div>
 
       <div style={{ position:"relative", aspectRatio:"16/9", background:"#000", overflow:"hidden" }}>
         {backdrop
           ? <img src={backdrop} alt="" style={{ position:"absolute", inset:0, width:"100%",
-              height:"100%", objectFit:"cover", opacity:0.5 }}/>
-          : <PosterImg show={s} style={{ position:"absolute", inset:0, opacity:0.4 }} fontSize={80}/>}
-        <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.5)" }}/>
+              height:"100%", objectFit:"cover", objectPosition:"center 20%", opacity:0.55 }}/>
+          : <PosterImg item={s} style={{ position:"absolute", inset:0, opacity:0.4 }} fontSize={80}/>}
+        <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.45)" }}/>
         {!playing
           ? <div style={{ position:"absolute", inset:0, display:"flex",
-              flexDirection:"column", alignItems:"center", justifyContent:"center", gap:11 }}>
-              <button onClick={()=>setPlay(true)} style={{ width:64, height:64, borderRadius:"50%",
+              flexDirection:"column", alignItems:"center", justifyContent:"center", gap:14 }}>
+              <button onClick={()=>setPlay(true)} style={{ width:72, height:72, borderRadius:"50%",
                 background:"linear-gradient(135deg,#ff4e6a,#ff7e42)", border:"none", color:"#fff",
                 cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
-                boxShadow:"0 0 40px rgba(255,78,106,0.55)" }}><IPlay s={24}/></button>
+                boxShadow:"0 0 50px rgba(255,78,106,0.6)", transition:"transform 0.2s" }}
+                onMouseEnter={e=>e.currentTarget.style.transform="scale(1.08)"}
+                onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
+                <IPlay s={28}/>
+              </button>
               <div style={{ textAlign:"center" }}>
-                <div style={{ color:"rgba(255,255,255,0.82)", fontSize:13, fontWeight:700 }}>Серия {ep}</div>
-                <div style={{ color:"rgba(255,255,255,0.3)", fontSize:11, marginTop:2 }}>Нажмите для просмотра</div>
+                <div style={{ color:"rgba(255,255,255,0.85)", fontSize:15, fontWeight:700,
+                  fontFamily:"'Montserrat',sans-serif" }}>
+                  {s.isMovie ? "Нажмите для просмотра" : `Серия ${ep}`}
+                </div>
+                <div style={{ color:"rgba(255,255,255,0.3)", fontSize:12, marginTop:3,
+                  fontFamily:"'Montserrat',sans-serif" }}>Плеер подключается...</div>
               </div>
             </div>
           : <div style={{ position:"absolute", inset:0, display:"flex",
-              alignItems:"center", justifyContent:"center", flexDirection:"column", gap:9 }}>
-              <div style={{ width:40, height:40, border:"3px solid rgba(255,78,106,0.28)",
+              alignItems:"center", justifyContent:"center", flexDirection:"column", gap:10 }}>
+              <div style={{ width:44, height:44, border:"3px solid rgba(255,78,106,0.28)",
                 borderTop:"3px solid #ff4e6a", borderRadius:"50%", animation:"spin 0.9s linear infinite" }}/>
-              <div style={{ color:"rgba(255,255,255,0.38)", fontSize:12 }}>Загружается плеер...</div>
+              <div style={{ color:"rgba(255,255,255,0.4)", fontSize:13,
+                fontFamily:"'Montserrat',sans-serif" }}>Загружается плеер...</div>
             </div>}
-        <div style={{ position:"absolute", top:9, left:9, background:"rgba(0,0,0,0.7)",
-          backdropFilter:"blur(6px)", borderRadius:7, padding:"3px 9px",
-          fontSize:11, color:"rgba(255,255,255,0.78)", fontWeight:600 }}>
-          {s.title} · Серия {ep}
+        <div style={{ position:"absolute", top:10, left:10, background:"rgba(0,0,0,0.72)",
+          backdropFilter:"blur(8px)", borderRadius:8, padding:"4px 11px",
+          fontSize:12, color:"rgba(255,255,255,0.8)", fontWeight:600,
+          fontFamily:"'Montserrat',sans-serif" }}>
+          {s.title}{!s.isMovie&&` · Серия ${ep}`}
         </div>
       </div>
 
       {/* EP NAV */}
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
-        padding:"9px 14px", background:"rgba(255,255,255,0.03)",
+      {!s.isMovie && <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+        padding:"10px 16px", background:"rgba(255,255,255,0.03)",
         borderBottom:"1px solid rgba(255,255,255,0.05)" }}>
         <button onClick={()=>ep>1&&goEp(ep-1)}
           style={{ background:ep>1?"rgba(255,255,255,0.08)":"rgba(255,255,255,0.03)",
             border:"none", color:ep>1?"#fff":"rgba(255,255,255,0.2)",
-            padding:"7px 14px", borderRadius:9, cursor:ep>1?"pointer":"default",
-            fontSize:12, fontWeight:600 }}>← {ep>1?`Серия ${ep-1}`:"Нет"}</button>
-        <span style={{ fontSize:12, color:"rgba(255,255,255,0.38)", fontWeight:600 }}>{ep} / {epCount}</span>
+            padding:"8px 16px", borderRadius:10, cursor:ep>1?"pointer":"default",
+            fontSize:13, fontWeight:600, fontFamily:"'Montserrat',sans-serif" }}>
+          ← {ep>1?`Серия ${ep-1}`:"Нет"}</button>
+        <span style={{ fontSize:13, color:"rgba(255,255,255,0.4)", fontWeight:600,
+          fontFamily:"'Montserrat',sans-serif" }}>{ep} / {epCount}</span>
         <button onClick={()=>ep<epCount&&goEp(ep+1)}
           style={{ background:ep<epCount?"linear-gradient(90deg,#ff4e6a,#ff7e42)":"rgba(255,255,255,0.03)",
             border:"none", color:ep<epCount?"#fff":"rgba(255,255,255,0.2)",
-            padding:"7px 14px", borderRadius:9, cursor:ep<epCount?"pointer":"default",
-            fontSize:12, fontWeight:600,
-            boxShadow:ep<epCount?"0 2px 10px rgba(255,78,106,0.35)":"none" }}>
+            padding:"8px 16px", borderRadius:10, cursor:ep<epCount?"pointer":"default",
+            fontSize:13, fontWeight:600, fontFamily:"'Montserrat',sans-serif",
+            boxShadow:ep<epCount?"0 3px 12px rgba(255,78,106,0.4)":"none" }}>
           {ep<epCount?`Серия ${ep+1}`:"Нет"} →</button>
-      </div>
+      </div>}
 
       {/* EPISODES */}
-      <div style={{ padding:"16px 16px 32px" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:11 }}>
-          <div style={{ width:3, height:17, background:"linear-gradient(180deg,#ff4e6a,#ff7e42)", borderRadius:2 }}/>
-          <span style={{ fontSize:14, fontWeight:800, fontFamily:"'Bebas Neue',sans-serif",
-            letterSpacing:"0.03em" }}>ВСЕ СЕРИИ</span>
-          <span style={{ fontSize:12, color:"rgba(255,255,255,0.28)" }}>{epCount} серий</span>
+      {!s.isMovie && <div style={{ padding:"18px 18px 36px" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
+          <div style={{ width:4, height:20, background:"linear-gradient(180deg,#ff4e6a,#ff7e42)", borderRadius:2 }}/>
+          <span style={{ fontSize:16, fontWeight:800, fontFamily:"'Montserrat',sans-serif" }}>Все серии</span>
+          <span style={{ fontSize:13, color:"rgba(255,255,255,0.3)",
+            fontFamily:"'Montserrat',sans-serif" }}>{epCount} серий</span>
         </div>
-        <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+        <div style={{ display:"flex", flexDirection:"column", gap:7 }}>
           {episodes.map(e=>(
             <div key={e.num} onClick={()=>goEp(e.num)}
-              style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px",
-                borderRadius:11, cursor:"pointer",
+              style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 14px",
+                borderRadius:13, cursor:"pointer",
                 background:ep===e.num?"linear-gradient(90deg,rgba(255,78,106,0.18),rgba(255,126,66,0.08))":"rgba(255,255,255,0.04)",
                 border:ep===e.num?"1px solid rgba(255,78,106,0.35)":"1px solid rgba(255,255,255,0.05)",
                 transition:"all 0.18s" }}
               onMouseEnter={ev=>{if(ep!==e.num)ev.currentTarget.style.background="rgba(255,255,255,0.07)";}}
               onMouseLeave={ev=>{if(ep!==e.num)ev.currentTarget.style.background="rgba(255,255,255,0.04)";}}>
-              <div style={{ width:34, height:34, borderRadius:8, flexShrink:0,
-                background:ep===e.num?"linear-gradient(135deg,#ff4e6a,#ff7e42)":"rgba(255,255,255,0.05)",
+              <div style={{ width:38, height:38, borderRadius:10, flexShrink:0,
+                background:ep===e.num?"linear-gradient(135deg,#ff4e6a,#ff7e42)":"rgba(255,255,255,0.06)",
                 display:"flex", alignItems:"center", justifyContent:"center",
                 color:ep===e.num?"#fff":"rgba(255,255,255,0.6)",
-                fontSize:11, fontWeight:700,
-                boxShadow:ep===e.num?"0 3px 10px rgba(255,78,106,0.45)":"none" }}>
-                {ep===e.num?<IPlay s={12}/>:e.num}
+                fontSize:12, fontWeight:700, fontFamily:"'Montserrat',sans-serif",
+                boxShadow:ep===e.num?"0 3px 12px rgba(255,78,106,0.45)":"none" }}>
+                {ep===e.num?<IPlay s={14}/>:e.num}
               </div>
               <div style={{ flex:1 }}>
-                <div style={{ fontSize:12, fontWeight:700,
-                  color:ep===e.num?"#fff":"rgba(255,255,255,0.68)" }}>Серия {e.num}</div>
-                <div style={{ fontSize:11, color:"rgba(255,255,255,0.26)", marginTop:1 }}>{e.dur}</div>
+                <div style={{ fontSize:13, fontWeight:700, fontFamily:"'Montserrat',sans-serif",
+                  color:ep===e.num?"#fff":"rgba(255,255,255,0.7)" }}>Серия {e.num}</div>
+                <div style={{ fontSize:12, color:"rgba(255,255,255,0.28)", marginTop:2,
+                  fontFamily:"'Montserrat',sans-serif" }}>{e.dur}</div>
               </div>
-              {ep===e.num&&<div style={{ fontSize:10, color:"#ff4e6a", fontWeight:700,
-                background:"rgba(255,78,106,0.12)", padding:"3px 7px", borderRadius:5 }}>СЕЙЧАС</div>}
+              {ep===e.num&&<div style={{ fontSize:11, color:"#ff4e6a", fontWeight:700,
+                background:"rgba(255,78,106,0.12)", padding:"3px 9px", borderRadius:6,
+                fontFamily:"'Montserrat',sans-serif" }}>СЕЙЧАС</div>}
             </div>
           ))}
         </div>
-      </div>
+      </div>}
     </div>
   );
 }
 
 // ═══════════════════════════════════════════════════════════
-//  AUTH + FAV PAGES (unchanged)
+//  AUTH
 // ═══════════════════════════════════════════════════════════
 function AuthPage({ onLogin, onClose }) {
   const [mode,setMode]=useState("login");
@@ -945,136 +991,131 @@ function AuthPage({ onLogin, onClose }) {
 
   return (
     <div onClick={onClose} className="auth-overlay" style={{ position:"fixed",inset:0,zIndex:200,
-      background:"rgba(0,0,0,0.9)",backdropFilter:"blur(10px)",
-      display:"flex",alignItems:"flex-end",justifyContent:"center",fontFamily:"'Manrope',sans-serif" }}>
+      background:"rgba(0,0,0,0.92)",backdropFilter:"blur(12px)",
+      display:"flex",alignItems:"flex-end",justifyContent:"center" }}>
       <div onClick={e=>e.stopPropagation()} className="auth-box" style={{
-        background:"linear-gradient(160deg,#131325 0%,#0e0e1e 100%)",
-        borderRadius:"22px 22px 0 0",width:"100%",maxWidth:680,
+        background:"linear-gradient(160deg,#0e0e22 0%,#090918 100%)",
+        borderRadius:"24px 24px 0 0",width:"100%",maxWidth:680,
         border:"1px solid rgba(255,255,255,0.08)",
-        boxShadow:"0 -20px 60px rgba(0,0,0,0.7)",
-        padding:"20px 22px 36px",maxHeight:"92vh",overflowY:"auto" }}>
-        <div style={{width:36,height:4,background:"rgba(255,255,255,0.15)",borderRadius:2,margin:"0 auto 20px"}}/>
-        <button onClick={onClose} style={{position:"absolute",top:18,right:18,
+        boxShadow:"0 -24px 64px rgba(0,0,0,0.8)",
+        padding:"22px 24px 40px",maxHeight:"92vh",overflowY:"auto" }}>
+        <div style={{width:40,height:4,background:"rgba(255,255,255,0.15)",borderRadius:2,margin:"0 auto 22px"}}/>
+        <button onClick={onClose} style={{position:"absolute",top:20,right:20,
           background:"rgba(255,255,255,0.08)",border:"none",color:"#fff",
-          width:32,height:32,borderRadius:"50%",cursor:"pointer",
-          display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>×</button>
-        <div style={{textAlign:"center",marginBottom:22}}>
-          <div style={{fontSize:28,fontFamily:"'Bebas Neue',sans-serif"}}>
-            <span style={{background:"linear-gradient(90deg,#ff4e6a,#ff7e42)",
-              WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>DORAMA</span>
-            <span style={{color:"#fff"}}>LIVE</span>
-          </div>
-          <div style={{color:"rgba(255,255,255,0.35)",fontSize:12,marginTop:4}}>
+          width:34,height:34,borderRadius:"50%",cursor:"pointer",
+          display:"flex",alignItems:"center",justifyContent:"center",fontSize:17}}>×</button>
+        <div style={{textAlign:"center",marginBottom:24}}>
+          <Logo size={26}/>
+          <div style={{color:"rgba(255,255,255,0.35)",fontSize:13,marginTop:6,fontFamily:"'Montserrat',sans-serif"}}>
             {mode==="login"?"Добро пожаловать!":"Создай аккаунт бесплатно"}
           </div>
         </div>
-        <div style={{display:"flex",background:"rgba(255,255,255,0.05)",borderRadius:12,padding:4,marginBottom:22}}>
+        <div style={{display:"flex",background:"rgba(255,255,255,0.05)",borderRadius:13,padding:4,marginBottom:24}}>
           {["login","register"].map(m=>(
             <button key={m} onClick={()=>{setMode(m);setErr("");}}
-              style={{flex:1,padding:"9px",borderRadius:9,border:"none",
+              style={{flex:1,padding:"10px",borderRadius:10,border:"none",
                 background:mode===m?"linear-gradient(90deg,#ff4e6a,#ff7e42)":"transparent",
                 color:mode===m?"#fff":"rgba(255,255,255,0.4)",
-                fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.2s"}}>
+                fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"'Montserrat',sans-serif"}}>
               {m==="login"?"Войти":"Регистрация"}
             </button>
           ))}
         </div>
-        <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:16}}>
+        <div style={{display:"flex",flexDirection:"column",gap:14,marginBottom:18}}>
           {mode==="register"&&(
             <div>
-              <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginBottom:6,fontWeight:600}}>ИМЯ</div>
+              <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginBottom:7,fontWeight:600,fontFamily:"'Montserrat',sans-serif"}}>ИМЯ</div>
               <input value={name} onChange={e=>setName(e.target.value)} placeholder="Как тебя зовут?"
-                style={{width:"100%",padding:"12px 14px",background:"rgba(255,255,255,0.06)",
-                  border:"1px solid rgba(255,255,255,0.1)",borderRadius:11,color:"#fff",
-                  fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+                style={{width:"100%",padding:"13px 16px",background:"rgba(255,255,255,0.06)",
+                  border:"1px solid rgba(255,255,255,0.1)",borderRadius:12,color:"#fff",
+                  fontSize:15,outline:"none",boxSizing:"border-box",fontFamily:"'Montserrat',sans-serif"}}/>
             </div>
           )}
           <div>
-            <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginBottom:6,fontWeight:600}}>EMAIL</div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginBottom:7,fontWeight:600,fontFamily:"'Montserrat',sans-serif"}}>EMAIL</div>
             <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="example@email.com" type="email"
-              style={{width:"100%",padding:"12px 14px",background:"rgba(255,255,255,0.06)",
-                border:"1px solid rgba(255,255,255,0.1)",borderRadius:11,color:"#fff",
-                fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+              style={{width:"100%",padding:"13px 16px",background:"rgba(255,255,255,0.06)",
+                border:"1px solid rgba(255,255,255,0.1)",borderRadius:12,color:"#fff",
+                fontSize:15,outline:"none",boxSizing:"border-box",fontFamily:"'Montserrat',sans-serif"}}/>
           </div>
           <div>
-            <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginBottom:6,fontWeight:600}}>ПАРОЛЬ</div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginBottom:7,fontWeight:600,fontFamily:"'Montserrat',sans-serif"}}>ПАРОЛЬ</div>
             <div style={{position:"relative"}}>
               <input value={pass} onChange={e=>setPass(e.target.value)}
                 placeholder={mode==="register"?"Минимум 6 символов":"Введи пароль"}
-                type={showP?"text":"password"}
-                onKeyDown={e=>e.key==="Enter"&&submit()}
-                style={{width:"100%",padding:"12px 44px 12px 14px",background:"rgba(255,255,255,0.06)",
-                  border:"1px solid rgba(255,255,255,0.1)",borderRadius:11,color:"#fff",
-                  fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+                type={showP?"text":"password"} onKeyDown={e=>e.key==="Enter"&&submit()}
+                style={{width:"100%",padding:"13px 48px 13px 16px",background:"rgba(255,255,255,0.06)",
+                  border:"1px solid rgba(255,255,255,0.1)",borderRadius:12,color:"#fff",
+                  fontSize:15,outline:"none",boxSizing:"border-box",fontFamily:"'Montserrat',sans-serif"}}/>
               <button onClick={()=>setShowP(s=>!s)}
-                style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",
+                style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",
                   background:"none",border:"none",color:"rgba(255,255,255,0.35)",
-                  cursor:"pointer",fontSize:16}}>{showP?"🙈":"👁"}</button>
+                  cursor:"pointer",fontSize:18}}>{showP?"🙈":"👁"}</button>
             </div>
           </div>
         </div>
         {err&&<div style={{background:"rgba(255,78,106,0.12)",border:"1px solid rgba(255,78,106,0.3)",
-          borderRadius:9,padding:"9px 13px",fontSize:12,color:"#ff9eaa",marginBottom:14}}>⚠️ {err}</div>}
+          borderRadius:10,padding:"10px 14px",fontSize:13,color:"#ff9eaa",marginBottom:16,
+          fontFamily:"'Montserrat',sans-serif"}}>⚠️ {err}</div>}
         <button onClick={submit} disabled={loading}
-          style={{width:"100%",padding:"14px",
+          style={{width:"100%",padding:"15px",
             background:loading?"rgba(255,255,255,0.1)":"linear-gradient(90deg,#ff4e6a,#ff7e42)",
-            border:"none",color:"#fff",borderRadius:12,fontSize:15,fontWeight:700,
-            cursor:loading?"default":"pointer",
-            display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-          {loading?<><div style={{width:16,height:16,border:"2px solid rgba(255,255,255,0.3)",
+            border:"none",color:"#fff",borderRadius:13,fontSize:16,fontWeight:700,
+            cursor:loading?"default":"pointer",fontFamily:"'Montserrat',sans-serif",
+            display:"flex",alignItems:"center",justifyContent:"center",gap:8,
+            boxShadow:loading?"none":"0 6px 24px rgba(255,78,106,0.4)"}}>
+          {loading?<><div style={{width:18,height:18,border:"2px solid rgba(255,255,255,0.3)",
             borderTop:"2px solid #fff",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>Загрузка...</>
-            :mode==="login"?"ВОЙТИ":"СОЗДАТЬ АККАУНТ"}
+            :mode==="login"?"Войти":"Создать аккаунт"}
         </button>
       </div>
     </div>
   );
 }
 
-function FavPage({ user, favIds, onSelect, onLogin }) {
+function FavPage({ user, onLogin }) {
   if (!user) return (
     <div style={{height:"100vh",display:"flex",flexDirection:"column",alignItems:"center",
-      justifyContent:"center",paddingBottom:70,fontFamily:"'Manrope',sans-serif",
-      color:"#fff",padding:"0 24px 70px",textAlign:"center"}}>
-      <div style={{fontSize:64,marginBottom:20}}>❤️</div>
-      <div style={{fontSize:22,fontWeight:800,fontFamily:"'Bebas Neue',sans-serif",marginBottom:10}}>ИЗБРАННОЕ</div>
-      <div style={{color:"rgba(255,255,255,0.4)",fontSize:13,lineHeight:1.7,marginBottom:28}}>
-        Войди в аккаунт, чтобы сохранять дорамы
+      justifyContent:"center",background:"#060612",color:"#fff",padding:"0 24px 80px",textAlign:"center"}}>
+      <div style={{fontSize:68,marginBottom:22}}>❤️</div>
+      <div style={{fontSize:26,fontWeight:800,fontFamily:"'Montserrat',sans-serif",marginBottom:12}}>Избранное</div>
+      <div style={{color:"rgba(255,255,255,0.4)",fontSize:14,lineHeight:1.7,marginBottom:32,
+        fontFamily:"'Montserrat',sans-serif"}}>
+        Войди чтобы сохранять фильмы и сериалы
       </div>
-      <button onClick={onLogin} style={{padding:"12px 32px",
+      <button onClick={onLogin} style={{padding:"14px 36px",
         background:"linear-gradient(90deg,#ff4e6a,#ff7e42)",border:"none",
-        color:"#fff",borderRadius:12,fontSize:14,fontWeight:700,cursor:"pointer"}}>
-        ВОЙТИ / ЗАРЕГИСТРИРОВАТЬСЯ
+        color:"#fff",borderRadius:13,fontSize:15,fontWeight:700,cursor:"pointer",
+        fontFamily:"'Montserrat',sans-serif",boxShadow:"0 6px 24px rgba(255,78,106,0.4)"}}>
+        Войти / Зарегистрироваться
       </button>
     </div>
   );
   return (
-    <div style={{height:"100vh",overflowY:"auto",paddingBottom:70,
-      fontFamily:"'Manrope',sans-serif",color:"#fff"}}>
-      <div style={{padding:"18px 16px",background:"rgba(10,10,24,0.97)",
+    <div style={{height:"100vh",overflowY:"auto",paddingBottom:80,background:"#060612",color:"#fff"}}>
+      <div style={{padding:"20px 18px",background:"rgba(6,6,18,0.98)",
         position:"sticky",top:0,zIndex:50,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          <div style={{fontSize:21,fontFamily:"'Bebas Neue',sans-serif"}}>
-            <span style={{background:"linear-gradient(90deg,#ff4e6a,#ff7e42)",
-              WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>DORAMA</span>
-            <span style={{color:"#fff"}}>LIVE</span>
-          </div>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <Logo size={20}/>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
             <div style={{textAlign:"right"}}>
-              <div style={{fontSize:13,fontWeight:700,color:"#fff"}}>{user.name}</div>
-              <div style={{fontSize:10,color:"rgba(255,255,255,0.35)"}}>{user.email}</div>
+              <div style={{fontSize:14,fontWeight:700,color:"#fff",fontFamily:"'Montserrat',sans-serif"}}>{user.name}</div>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",fontFamily:"'Montserrat',sans-serif"}}>{user.email}</div>
             </div>
-            <div style={{width:38,height:38,borderRadius:"50%",
+            <div style={{width:42,height:42,borderRadius:"50%",
               background:"linear-gradient(135deg,#ff4e6a,#ff7e42)",
               display:"flex",alignItems:"center",justifyContent:"center",
-              fontSize:16,fontWeight:700,color:"#fff"}}>
+              fontSize:18,fontWeight:700,color:"#fff",fontFamily:"'Montserrat',sans-serif"}}>
               {user.name[0].toUpperCase()}
             </div>
           </div>
         </div>
       </div>
-      <div style={{padding:"20px 16px",textAlign:"center",color:"rgba(255,255,255,0.4)"}}>
-        <div style={{fontSize:44,marginBottom:10}}>🔖</div>
-        <div>Нажми ❤️ на странице дорамы чтобы добавить в избранное</div>
+      <div style={{padding:"24px 18px",textAlign:"center",color:"rgba(255,255,255,0.4)"}}>
+        <div style={{fontSize:52,marginBottom:12}}>🔖</div>
+        <div style={{fontSize:15,fontFamily:"'Montserrat',sans-serif"}}>
+          Нажми ❤️ на странице фильма чтобы добавить в избранное
+        </div>
       </div>
     </div>
   );
@@ -1084,69 +1125,67 @@ function FavPage({ user, favIds, onSelect, onLogin }) {
 //  APP ROOT
 // ═══════════════════════════════════════════════════════════
 export default function App() {
-  const [page,    setPage]    = useState("home");
-  const [show,    setShow]    = useState(null);
-  const [user,    setUser]    = useState(null);
-  const [favIds,  setFavIds]  = useState([]);
-  const [showAuth,setShowAuth]= useState(false);
-  const [catalogCountry, setCatalogCountry] = useState("");
+  const [page,     setPage]    = useState("home");
+  const [item,     setItem]    = useState(null);
+  const [user,     setUser]    = useState(null);
+  const [favIds,   setFavIds]  = useState([]);
+  const [showAuth, setShowAuth]= useState(false);
+  const [initCat,  setInitCat] = useState("trending");
 
-  const openShow  = s => { setShow(s); setPage("watch"); };
-  const goBack    = () => { setPage("home"); setShow(null); };
+  const openItem  = i => { setItem(i); setPage("watch"); };
+  const goBack    = () => { setPage("home"); setItem(null); };
   const login     = u => { setUser(u); setShowAuth(false); };
   const toggleFav = id=> setFavIds(f=>f.includes(id)?f.filter(x=>x!==id):[...f,id]);
 
   const handleNav = (target, params={}) => {
-    if (target==="catalog") { setCatalogCountry(params.country||""); setPage("catalog"); }
+    if (target==="catalog") { setInitCat(params.cat||"trending"); setPage("catalog"); }
     else if (target==="search") setPage("search");
-    else if (target==="fav") setPage("fav");
-    else setPage("home");
-    setShow(null);
+    else if (target==="fav")    setPage("fav");
+    else                        setPage("home");
+    setItem(null);
   };
 
-  const currentPage = show ? "watch" : page;
+  const currentPage = item ? "watch" : page;
 
   return (
     <>
-      <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+      <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
       <style>{`
         *{box-sizing:border-box;margin:0;padding:0;}
-        body{background:#0a0a18;}
+        body{background:#060612;font-family:'Montserrat',sans-serif;}
         ::-webkit-scrollbar{display:none;}
-        input::placeholder{color:rgba(255,255,255,0.26);}
+        input::placeholder{color:rgba(255,255,255,0.26);font-family:'Montserrat',sans-serif;}
         @keyframes spin{to{transform:rotate(360deg);}}
-        .page-wrap{width:100%;max-width:1400px;margin:0 auto;padding:0 18px;}
-        .nav-wrap{width:100%;max-width:1400px;margin:0 auto;padding:0 18px;display:flex;align-items:center;justify-content:space-between;height:100%;}
+        .page-wrap{width:100%;max-width:1400px;margin:0 auto;padding:0 20px;}
+        .nav-wrap{width:100%;max-width:1400px;margin:0 auto;padding:0 20px;display:flex;align-items:center;justify-content:space-between;height:100%;}
         .desktop-nav{display:none;}
         .bottom-nav-bar{display:flex;}
-        .section-cards{display:flex;gap:11px;overflow-x:auto;scrollbar-width:none;scroll-behavior:smooth;}
-        .card-item{flex-shrink:0;width:132px;}
-        .catalog-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:11px;}
-        .countries-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
-        .watch-container{max-width:680px;margin:0 auto;}
+        .section-cards{display:flex;gap:12px;overflow-x:auto;scrollbar-width:none;scroll-behavior:smooth;}
+        .card-item{flex-shrink:0;width:140px;}
+        .catalog-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;}
+        .watch-container{max-width:720px;margin:0 auto;}
         .auth-overlay{align-items:flex-end;}
-        .auth-box{border-radius:22px 22px 0 0;width:100%;max-width:680px;}
+        .auth-box{border-radius:24px 24px 0 0;width:100%;max-width:720px;}
         @media(min-width:768px){
           .desktop-nav{display:flex;gap:28px;align-items:center;}
           .bottom-nav-bar{display:none!important;}
-          .card-item{width:168px!important;}
-          .catalog-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))!important;gap:16px!important;}
-          .countries-grid{grid-template-columns:repeat(5,1fr)!important;}
-          .watch-container{max-width:860px!important;}
+          .card-item{width:175px!important;}
+          .catalog-grid{grid-template-columns:repeat(auto-fill,minmax(170px,1fr))!important;gap:18px!important;}
+          .watch-container{max-width:900px!important;}
           .auth-overlay{align-items:center!important;}
-          .auth-box{border-radius:20px!important;max-width:460px!important;}
+          .auth-box{border-radius:22px!important;max-width:480px!important;}
         }
-        @media(min-width:1100px){
-          .card-item{width:190px!important;}
-          .catalog-grid{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))!important;}
+        @media(min-width:1200px){
+          .card-item{width:200px!important;}
+          .catalog-grid{grid-template-columns:repeat(auto-fill,minmax(190px,1fr))!important;}
         }
       `}</style>
-      <div style={{ background:"#0a0a18", minHeight:"100vh" }}>
-        {currentPage==="home"    && <HomePage    onSelect={openShow} onNav={handleNav} user={user} onLoginClick={()=>setShowAuth(true)}/>}
-        {currentPage==="catalog" && <CatalogPage onSelect={openShow} initCountry={catalogCountry}/>}
-        {currentPage==="search"  && <SearchPage  onSelect={openShow}/>}
-        {currentPage==="fav"     && <FavPage     user={user} favIds={favIds} onSelect={openShow} onLogin={()=>setShowAuth(true)}/>}
-        {currentPage==="watch"   && show && <WatchPage show={show} onBack={goBack} isFav={favIds.includes(show.id)} onToggleFav={()=>toggleFav(show.id)}/>}
+      <div style={{ background:"#060612", minHeight:"100vh" }}>
+        {currentPage==="home"    && <HomePage    onSelect={openItem} onNav={handleNav} user={user} onLoginClick={()=>setShowAuth(true)}/>}
+        {currentPage==="catalog" && <CatalogPage onSelect={openItem} initCat={initCat}/>}
+        {currentPage==="search"  && <SearchPage  onSelect={openItem}/>}
+        {currentPage==="fav"     && <FavPage     user={user} onLogin={()=>setShowAuth(true)}/>}
+        {currentPage==="watch"   && item && <WatchPage item={item} onBack={goBack} isFav={favIds.includes(item.id)} onToggleFav={()=>toggleFav(item.id)}/>}
         {currentPage!=="watch"   && <BottomNav page={page} onNav={handleNav}/>}
         {showAuth && <AuthPage onLogin={login} onClose={()=>setShowAuth(false)}/>}
       </div>

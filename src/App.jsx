@@ -705,26 +705,6 @@ function WatchPage({ item: s, onBack, isFav, onToggleFav }) {
     window.scrollTo(0,0);
   },[s.id]);
 
-function WatchPage({ item: s, onBack, isFav, onToggleFav }) {
-  const [ep,      setEp]      = useState(1);
-  const [bm,      setBm]      = useState(isFav||false);
-  const [exp,     setExp]     = useState(false);
-  const [playing, setPlay]    = useState(false);
-  const [details, setDetails] = useState(null);
-
-  // Fix browser back button
-  useEffect(()=>{
-    window.history.pushState({ page:"watch" }, "");
-    const handlePop = () => onBack();
-    window.addEventListener("popstate", handlePop);
-    return () => window.removeEventListener("popstate", handlePop);
-  },[]);
-
-  useEffect(()=>{
-    fetchDetails(s.id, s.type||"tv").then(setDetails).catch(()=>{});
-    window.scrollTo(0,0);
-  },[s.id]);
-
   const epCount  = details?.number_of_episodes || (s.isMovie ? 1 : 12);
   const cast     = details?.credits?.cast?.slice(0,8) || [];
   const director = details?.credits?.crew?.find(c=>c.job==="Director");
@@ -734,287 +714,6 @@ function WatchPage({ item: s, onBack, isFav, onToggleFav }) {
   const genres   = details?.genres?.map(g=>g.name) || [];
   const episodes = Array.from({length:Math.min(epCount,150)},(_,i)=>({num:i+1,dur:`${s.isMovie?120:42+Math.floor(Math.random()*15)} мин`}));
   const goEp = n => { setEp(n); setPlay(false); };
-
-  return (
-    <div style={{ background:"#060612", minHeight:"100vh", color:"#fff" }}>
-
-      {/* TOP NAV */}
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
-        padding:"12px 20px", position:"sticky", top:0, zIndex:50,
-        background:"rgba(6,6,18,0.97)", backdropFilter:"blur(16px)",
-        borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-          <button onClick={onBack} style={{ background:"rgba(255,255,255,0.08)", border:"none",
-            color:"#fff", width:40, height:40, borderRadius:11, cursor:"pointer",
-            display:"flex", alignItems:"center", justifyContent:"center" }}><IBack/></button>
-          <div style={{ fontSize:12, color:"rgba(255,255,255,0.35)", display:"flex", gap:6,
-            fontFamily:"'Montserrat',sans-serif", alignItems:"center" }}>
-            <span onClick={onBack} style={{ cursor:"pointer", color:"rgba(255,255,255,0.6)" }}>Главная</span>
-            <span>/</span>
-            <span style={{ color:"rgba(255,255,255,0.35)", maxWidth:300,
-              overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.title}</span>
-          </div>
-        </div>
-        <div style={{ display:"flex", gap:8 }}>
-          <button onClick={()=>{setBm(b=>!b);onToggleFav&&onToggleFav();}}
-            style={{ background:bm?"rgba(255,78,106,0.15)":"rgba(255,255,255,0.08)",
-              border:bm?"1px solid rgba(255,78,106,0.4)":"1px solid transparent",
-              color:"#fff", width:40, height:40, borderRadius:11, cursor:"pointer",
-              display:"flex", alignItems:"center", justifyContent:"center" }}><IBm on={bm}/></button>
-          <button style={{ background:"rgba(255,255,255,0.08)", border:"none", color:"#fff",
-            width:40, height:40, borderRadius:11, cursor:"pointer",
-            display:"flex", alignItems:"center", justifyContent:"center" }}><IShare/></button>
-        </div>
-      </div>
-
-      {/* BACKDROP HERO */}
-      <div style={{ position:"relative", height:420, overflow:"hidden" }}>
-        {backdrop
-          ? <img src={backdrop} alt={s.title}
-              style={{ position:"absolute", inset:0, width:"100%", height:"100%",
-                objectFit:"cover", objectPosition:"center 15%" }}/>
-          : <div style={{ position:"absolute", inset:0, background:"linear-gradient(135deg,#1a0533,#0a1628)" }}/>}
-        <div style={{ position:"absolute", inset:0,
-          background:"linear-gradient(to bottom,rgba(0,0,0,0.3) 0%,rgba(6,6,18,1) 100%)" }}/>
-      </div>
-
-      {/* MAIN CONTENT — two column on desktop */}
-      <div style={{ maxWidth:1200, margin:"0 auto", padding:"0 24px 60px" }}>
-        <div className="watch-layout">
-
-          {/* LEFT — poster + info */}
-          <div className="watch-left">
-            {/* Poster */}
-            <div style={{ width:"100%", aspectRatio:"2/3", borderRadius:18, overflow:"hidden",
-              boxShadow:"0 20px 60px rgba(0,0,0,0.8)", border:"2px solid rgba(255,255,255,0.1)",
-              marginTop:-120, position:"relative", zIndex:2 }}>
-              <PosterImg item={s} fontSize={60}/>
-            </div>
-
-            {/* Action buttons */}
-            <div style={{ display:"flex", flexDirection:"column", gap:10, marginTop:16 }}>
-              <button onClick={()=>setPlay(true)} style={{ width:"100%", padding:"14px",
-                background:"linear-gradient(90deg,#ff4e6a,#ff7e42)", border:"none",
-                color:"#fff", borderRadius:12, fontSize:15, fontWeight:700, cursor:"pointer",
-                display:"flex", alignItems:"center", justifyContent:"center", gap:8,
-                fontFamily:"'Montserrat',sans-serif",
-                boxShadow:"0 6px 24px rgba(255,78,106,0.45)" }}>
-                <IPlay s={18}/> {s.isMovie ? "Смотреть фильм" : `Серия ${ep}`}
-              </button>
-              <button onClick={()=>{setBm(b=>!b);onToggleFav&&onToggleFav();}}
-                style={{ width:"100%", padding:"12px",
-                  background: bm?"rgba(255,78,106,0.15)":"rgba(255,255,255,0.07)",
-                  border: bm?"1px solid rgba(255,78,106,0.4)":"1px solid rgba(255,255,255,0.12)",
-                  color: bm?"#ff4e6a":"rgba(255,255,255,0.7)", borderRadius:12,
-                  fontSize:14, fontWeight:600, cursor:"pointer",
-                  display:"flex", alignItems:"center", justifyContent:"center", gap:7,
-                  fontFamily:"'Montserrat',sans-serif" }}>
-                <IBm on={bm}/> {bm?"В избранном":"В избранное"}
-              </button>
-            </div>
-
-            {/* Info table */}
-            <div style={{ marginTop:16, background:"rgba(255,255,255,0.04)",
-              borderRadius:14, border:"1px solid rgba(255,255,255,0.07)", overflow:"hidden" }}>
-              {[
-                ["Год", s.year],
-                !s.isMovie&&["Серий", String(epCount)],
-                director&&["Режиссёр", director.name],
-                details?.networks?.[0]&&["Канал", details.networks[0].name],
-                details?.production_countries?.[0]&&["Страна", details.production_countries[0].name],
-              ].filter(Boolean).map(([k,v],i,arr)=>(
-                <div key={k} style={{ display:"flex", justifyContent:"space-between",
-                  alignItems:"center", padding:"11px 14px",
-                  borderBottom:i<arr.length-1?"1px solid rgba(255,255,255,0.05)":"none" }}>
-                  <span style={{ color:"rgba(255,255,255,0.35)", fontSize:12,
-                    fontFamily:"'Montserrat',sans-serif" }}>{k}</span>
-                  <span style={{ color:"rgba(255,255,255,0.8)", fontSize:12, fontWeight:600,
-                    fontFamily:"'Montserrat',sans-serif", textAlign:"right", maxWidth:160 }}>{v}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* RIGHT — details + player + episodes */}
-          <div className="watch-right">
-            {/* Title block */}
-            <div style={{ marginTop:16 }}>
-              <div style={{ display:"flex", gap:8, marginBottom:10, flexWrap:"wrap" }}>
-                {s.tag&&<Tag label={s.tag} color={s.tagColor}/>}
-                <TypeBadge isMovie={s.isMovie}/>
-              </div>
-              <div style={{ fontSize:36, fontWeight:900, color:"#fff", lineHeight:1.1,
-                fontFamily:"'Montserrat',sans-serif", letterSpacing:"-0.02em", marginBottom:8 }}>
-                {details?.name||details?.title||s.title}
-              </div>
-              <div style={{ color:"rgba(255,255,255,0.4)", fontSize:14, marginBottom:14,
-                fontFamily:"'Montserrat',sans-serif" }}>{s.en}</div>
-              <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:16, flexWrap:"wrap" }}>
-                <div style={{ display:"flex", alignItems:"center", gap:5,
-                  background:"rgba(255,215,0,0.1)", borderRadius:9, padding:"5px 12px",
-                  border:"1px solid rgba(255,215,0,0.2)" }}>
-                  <IStar s={14}/><span style={{ color:"#FFD700", fontWeight:700, fontSize:15,
-                    fontFamily:"'Montserrat',sans-serif" }}>{rating}</span>
-                </div>
-                {[s.year, s.isMovie?null:`${epCount} сер.`].filter(Boolean).map(v=>
-                  <span key={v} style={{ color:"rgba(255,255,255,0.5)", fontSize:14,
-                    fontFamily:"'Montserrat',sans-serif" }}>{v}</span>)}
-              </div>
-              {genres.length>0&&<div style={{ display:"flex", gap:7, flexWrap:"wrap", marginBottom:16 }}>
-                {genres.map(g=><span key={g} style={{ background:"rgba(255,78,106,0.1)", color:"#ff9eaa",
-                  fontSize:12, padding:"5px 13px", borderRadius:9, fontFamily:"'Montserrat',sans-serif",
-                  border:"1px solid rgba(255,78,106,0.2)" }}>{g}</span>)}
-              </div>}
-            </div>
-
-            {/* Description */}
-            <div style={{ marginBottom:20 }}>
-              <div style={{ color:"rgba(255,255,255,0.65)", fontSize:14, lineHeight:1.85,
-                fontFamily:"'Montserrat',sans-serif",
-                overflow:"hidden", maxHeight:exp?"none":"88px",
-                maskImage:exp?"none":"linear-gradient(to bottom,black 50%,transparent 100%)",
-                WebkitMaskImage:exp?"none":"linear-gradient(to bottom,black 50%,transparent 100%)" }}>{desc}</div>
-              <button onClick={()=>setExp(e=>!e)} style={{ background:"none", border:"none",
-                color:"#ff4e6a", fontSize:13, fontWeight:700, cursor:"pointer",
-                marginTop:6, padding:0, fontFamily:"'Montserrat',sans-serif" }}>
-                {exp?"Свернуть ↑":"Читать далее ↓"}</button>
-            </div>
-
-            {/* Cast */}
-            {cast.length>0&&<div style={{ marginBottom:24 }}>
-              <div style={{ fontSize:13, fontWeight:700, color:"rgba(255,255,255,0.4)", marginBottom:14,
-                fontFamily:"'Montserrat',sans-serif", letterSpacing:"0.04em" }}>В ГЛАВНЫХ РОЛЯХ</div>
-              <div style={{ display:"flex", gap:14, overflowX:"auto", scrollbarWidth:"none", paddingBottom:4 }}>
-                {cast.map(actor=>(
-                  <div key={actor.id} style={{ flexShrink:0, textAlign:"center", width:72 }}>
-                    <div style={{ width:68, height:68, borderRadius:"50%", margin:"0 auto 8px",
-                      overflow:"hidden", border:"2px solid rgba(255,78,106,0.3)",
-                      boxShadow:"0 4px 14px rgba(0,0,0,0.5)" }}>
-                      <ActorPhoto actor={actor}/>
-                    </div>
-                    <div style={{ color:"rgba(255,255,255,0.75)", fontSize:11, fontWeight:600,
-                      fontFamily:"'Montserrat',sans-serif", lineHeight:1.3,
-                      display:"-webkit-box", WebkitLineClamp:2,
-                      WebkitBoxOrient:"vertical", overflow:"hidden" }}>{actor.name}</div>
-                    {actor.character&&<div style={{ color:"rgba(255,255,255,0.3)", fontSize:9.5, marginTop:2,
-                      fontFamily:"'Montserrat',sans-serif", overflow:"hidden",
-                      textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{actor.character}</div>}
-                  </div>
-                ))}
-              </div>
-            </div>}
-
-            {/* PLAYER */}
-            <div style={{ marginBottom:24 }}>
-              <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
-                <div style={{ width:4, height:22, background:"linear-gradient(180deg,#ff4e6a,#ff7e42)", borderRadius:2 }}/>
-                <span style={{ fontSize:17, fontWeight:800, fontFamily:"'Montserrat',sans-serif" }}>
-                  {s.isMovie ? "Смотреть фильм" : `Серия ${ep} из ${epCount}`}
-                </span>
-              </div>
-              <div style={{ position:"relative", aspectRatio:"16/9", background:"#000",
-                borderRadius:16, overflow:"hidden", boxShadow:"0 10px 40px rgba(0,0,0,0.7)" }}>
-                {backdrop
-                  ? <img src={backdrop} alt="" style={{ position:"absolute", inset:0, width:"100%",
-                      height:"100%", objectFit:"cover", objectPosition:"center 15%", opacity:0.5 }}/>
-                  : <PosterImg item={s} style={{ position:"absolute", inset:0, opacity:0.4 }} fontSize={80}/>}
-                <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.45)" }}/>
-                {!playing
-                  ? <div style={{ position:"absolute", inset:0, display:"flex",
-                      flexDirection:"column", alignItems:"center", justifyContent:"center", gap:14 }}>
-                      <button onClick={()=>setPlay(true)} style={{ width:76, height:76, borderRadius:"50%",
-                        background:"linear-gradient(135deg,#ff4e6a,#ff7e42)", border:"none", color:"#fff",
-                        cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
-                        boxShadow:"0 0 60px rgba(255,78,106,0.7)", transition:"transform 0.2s" }}
-                        onMouseEnter={e=>e.currentTarget.style.transform="scale(1.1)"}
-                        onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
-                        <IPlay s={30}/>
-                      </button>
-                      <div style={{ textAlign:"center" }}>
-                        <div style={{ color:"rgba(255,255,255,0.9)", fontSize:15, fontWeight:700,
-                          fontFamily:"'Montserrat',sans-serif" }}>
-                          {s.isMovie?"Нажмите для просмотра":`Серия ${ep}`}
-                        </div>
-                        <div style={{ color:"rgba(255,255,255,0.35)", fontSize:12, marginTop:4,
-                          fontFamily:"'Montserrat',sans-serif" }}>Плеер подключается...</div>
-                      </div>
-                    </div>
-                  : <div style={{ position:"absolute", inset:0, display:"flex",
-                      alignItems:"center", justifyContent:"center", flexDirection:"column", gap:12 }}>
-                      <div style={{ width:48, height:48, border:"3px solid rgba(255,78,106,0.28)",
-                        borderTop:"3px solid #ff4e6a", borderRadius:"50%", animation:"spin 0.9s linear infinite" }}/>
-                      <div style={{ color:"rgba(255,255,255,0.4)", fontSize:13,
-                        fontFamily:"'Montserrat',sans-serif" }}>Загружается плеер...</div>
-                    </div>}
-              </div>
-
-              {/* Episode nav */}
-              {!s.isMovie && <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
-                marginTop:10 }}>
-                <button onClick={()=>ep>1&&goEp(ep-1)}
-                  style={{ background:ep>1?"rgba(255,255,255,0.08)":"rgba(255,255,255,0.03)",
-                    border:"none", color:ep>1?"#fff":"rgba(255,255,255,0.2)",
-                    padding:"8px 18px", borderRadius:10, cursor:ep>1?"pointer":"default",
-                    fontSize:13, fontWeight:600, fontFamily:"'Montserrat',sans-serif" }}>
-                  ← {ep>1?`Серия ${ep-1}`:"Нет"}</button>
-                <span style={{ fontSize:13, color:"rgba(255,255,255,0.4)", fontWeight:600,
-                  fontFamily:"'Montserrat',sans-serif" }}>{ep} / {epCount}</span>
-                <button onClick={()=>ep<epCount&&goEp(ep+1)}
-                  style={{ background:ep<epCount?"linear-gradient(90deg,#ff4e6a,#ff7e42)":"rgba(255,255,255,0.03)",
-                    border:"none", color:ep<epCount?"#fff":"rgba(255,255,255,0.2)",
-                    padding:"8px 18px", borderRadius:10, cursor:ep<epCount?"pointer":"default",
-                    fontSize:13, fontWeight:600, fontFamily:"'Montserrat',sans-serif",
-                    boxShadow:ep<epCount?"0 3px 14px rgba(255,78,106,0.4)":"none" }}>
-                  {ep<epCount?`Серия ${ep+1}`:"Нет"} →</button>
-              </div>}
-            </div>
-
-            {/* EPISODES LIST */}
-            {!s.isMovie && <div>
-              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
-                <div style={{ width:4, height:22, background:"linear-gradient(180deg,#ff4e6a,#ff7e42)", borderRadius:2 }}/>
-                <span style={{ fontSize:17, fontWeight:800, fontFamily:"'Montserrat',sans-serif" }}>Все серии</span>
-                <span style={{ fontSize:13, color:"rgba(255,255,255,0.3)",
-                  fontFamily:"'Montserrat',sans-serif" }}>{epCount} серий</span>
-              </div>
-              <div style={{ display:"flex", flexDirection:"column", gap:7,
-                maxHeight:400, overflowY:"auto", scrollbarWidth:"none" }}>
-                {episodes.map(e=>(
-                  <div key={e.num} onClick={()=>goEp(e.num)}
-                    style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 14px",
-                      borderRadius:12, cursor:"pointer",
-                      background:ep===e.num?"linear-gradient(90deg,rgba(255,78,106,0.18),rgba(255,126,66,0.08))":"rgba(255,255,255,0.04)",
-                      border:ep===e.num?"1px solid rgba(255,78,106,0.35)":"1px solid rgba(255,255,255,0.05)",
-                      transition:"all 0.18s" }}
-                    onMouseEnter={ev=>{if(ep!==e.num)ev.currentTarget.style.background="rgba(255,255,255,0.07)";}}
-                    onMouseLeave={ev=>{if(ep!==e.num)ev.currentTarget.style.background="rgba(255,255,255,0.04)";}}>
-                    <div style={{ width:38, height:38, borderRadius:10, flexShrink:0,
-                      background:ep===e.num?"linear-gradient(135deg,#ff4e6a,#ff7e42)":"rgba(255,255,255,0.06)",
-                      display:"flex", alignItems:"center", justifyContent:"center",
-                      color:ep===e.num?"#fff":"rgba(255,255,255,0.6)",
-                      fontSize:12, fontWeight:700, fontFamily:"'Montserrat',sans-serif",
-                      boxShadow:ep===e.num?"0 3px 12px rgba(255,78,106,0.45)":"none" }}>
-                      {ep===e.num?<IPlay s={14}/>:e.num}
-                    </div>
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontSize:13, fontWeight:700, fontFamily:"'Montserrat',sans-serif",
-                        color:ep===e.num?"#fff":"rgba(255,255,255,0.7)" }}>Серия {e.num}</div>
-                      <div style={{ fontSize:11, color:"rgba(255,255,255,0.28)", marginTop:2,
-                        fontFamily:"'Montserrat',sans-serif" }}>{e.dur}</div>
-                    </div>
-                    {ep===e.num&&<div style={{ fontSize:11, color:"#ff4e6a", fontWeight:700,
-                      background:"rgba(255,78,106,0.12)", padding:"3px 9px", borderRadius:6,
-                      fontFamily:"'Montserrat',sans-serif" }}>СЕЙЧАС</div>}
-                  </div>
-                ))}
-              </div>
-            </div>}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
   return (
     <div className="watch-container" style={{ background:"#060612", minHeight:"100vh",
@@ -1464,26 +1163,21 @@ export default function App() {
         .section-cards{display:flex;gap:12px;overflow-x:auto;scrollbar-width:none;scroll-behavior:smooth;}
         .card-item{flex-shrink:0;width:140px;}
         .catalog-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;}
+        .watch-container{max-width:720px;margin:0 auto;}
         .auth-overlay{align-items:flex-end;}
         .auth-box{border-radius:24px 24px 0 0;width:100%;max-width:720px;}
-        .watch-layout{display:flex;flex-direction:column;gap:24px;}
-        .watch-left{width:100%;}
-        .watch-right{width:100%;}
         @media(min-width:768px){
           .desktop-nav{display:flex;gap:28px;align-items:center;}
           .bottom-nav-bar{display:none!important;}
           .card-item{width:175px!important;}
           .catalog-grid{grid-template-columns:repeat(auto-fill,minmax(170px,1fr))!important;gap:18px!important;}
+          .watch-container{max-width:900px!important;}
           .auth-overlay{align-items:center!important;}
           .auth-box{border-radius:22px!important;max-width:480px!important;}
-          .watch-layout{flex-direction:row;align-items:flex-start;gap:40px;}
-          .watch-left{width:260px;flex-shrink:0;position:sticky;top:74px;}
-          .watch-right{flex:1;min-width:0;}
         }
         @media(min-width:1200px){
           .card-item{width:200px!important;}
           .catalog-grid{grid-template-columns:repeat(auto-fill,minmax(190px,1fr))!important;}
-          .watch-left{width:300px;}
         }
       `}</style>
       <div style={{ background:"#060612", minHeight:"100vh" }}>
